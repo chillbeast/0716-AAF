@@ -44,60 +44,48 @@ CSong::CSong (int32_t id, std::string name, float tempo, uint8_t swing, int32_t 
 }
 
 CSong::CSong (const CSong& source)
-	: CSong (source._songData->songId, source._songData->songName, source._songData->songTempo, source._songData->songSwing, source._songData->numberOfScenes, source._songManager/*, source.isFillMode*/)
+    : _songData(new SongData(*source._songData)), editSceneId(source.editSceneId),
+      playSceneId(source.playSceneId), startSceneId(source.startSceneId), endSceneId(source.endSceneId),
+      jumpSceneId(source.jumpSceneId), _songManager(source._songManager), songNameDirtyFlag(source.songNameDirtyFlag)
 {
-	// copy list
-	auto start = source._songData->sceneList.begin ();
-	auto end = source._songData->sceneList.end ();
-	_songData->sceneList.clear ();
-	this->editSceneId = source.editSceneId;
-	this->playSceneId = source.playSceneId;
-
-	for (auto& i = start; i != end; ++i)
-	{
-		_songData->sceneList.push_back (*i);
-
-		if ((*i)._sceneData->sceneId == (uint32_t)this->editSceneId)
-		{
-			this->editScene = &(*i);
-		}
-		if ((*i)._sceneData->sceneId == (uint32_t)this->playSceneId)
-		{
-			this->playScene = &(*i);
-		}
-	}
+    rebindSelection();
 }
 
+CSong& CSong::operator=(const CSong& source)
+{
+    if (this != &source)
+    {
+        CSong copy(source);
+        std::swap(_songData, copy._songData);
+        editSceneId = source.editSceneId;
+        playSceneId = source.playSceneId;
+        startSceneId = source.startSceneId;
+        endSceneId = source.endSceneId;
+        jumpSceneId = source.jumpSceneId;
+        _songManager = source._songManager;
+        songNameDirtyFlag = source.songNameDirtyFlag;
+        rebindSelection();
+    }
+    return *this;
+}
 
-//Special case constructor, should be called only when active song id is updated, due to position change in song list
-CSong::CSong (const SongData songData, SongManager* songMgr, int32_t editSceneId, int32_t playSceneId, int32_t startSceneId, int32_t endSceneId, int32_t jumpSceneId)
-	: CSong (songData.songId, songData.songName, songData.songTempo, songData.songSwing, songData.numberOfScenes, songMgr)
-{	
-	_songData->sceneList.clear ();
+// Rebuilding a song after its position changes must preserve all song settings.
+CSong::CSong (const SongData songData, SongManager* songMgr, int32_t editId, int32_t playId,
+              int32_t startId, int32_t endId, int32_t jumpId)
+    : _songData(new SongData(songData)), editSceneId(editId), playSceneId(playId),
+      startSceneId(startId), endSceneId(endId), jumpSceneId(jumpId), _songManager(songMgr)
+{
+    rebindSelection();
+}
 
-	_songData->sceneList = songData.sceneList;
-
-	//set the edit scene and play scene, if it was set in active song
-	this->editSceneId = editSceneId;
-	this->playSceneId = playSceneId;
-	this->startSceneId = startSceneId;
-	this->endSceneId = endSceneId;
-	this->jumpSceneId = jumpSceneId;
-
-	auto start = _songData->sceneList.begin ();
-	auto end = _songData->sceneList.end ();
-
-	for (auto &scene : _songData->sceneList)
-	{
-		if (scene.getId () == editSceneId)
-		{
-			this->editScene = &scene;
-		}
-		if (scene.getId () == playSceneId)
-		{
-			this->playScene = &scene;
-		}
-	}
+void CSong::rebindSelection()
+{
+    editScene = playScene = nullptr;
+    for (auto& scene : _songData->sceneList)
+    {
+        if (scene.getId() == editSceneId) editScene = &scene;
+        if (scene.getId() == playSceneId) playScene = &scene;
+    }
 }
 
 CSong::~CSong ()

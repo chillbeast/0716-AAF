@@ -6,6 +6,7 @@
 #include "Common/Modules/Instrument.h"
 #include "common_defs/source/EngineDataStruct.h"
 #include "Firmware/Application/Model/IgniteEngine.h"
+#include "Firmware/Application/Model/SoundFontProgram.h"
 #include "Firmware/Application/Model/SettingsManager/SettingsSculptModeCnfg.h"
 #include "Firmware/Application/Model/SettingsManager/SettingsBRayCnfg.h"
 #include "Firmware/Application/Model/SongManager.h"
@@ -614,6 +615,7 @@ void Track::pulse(int16_t sceneBarId, int16_t sceneStepId)
 
 	}//if play or live_record
 
+    completedPulses.fetch_add(1, std::memory_order_release);
 #if 0
 		handleMidiOutClockGeneration(pulse);
 		handleAdsrOut(pulse);
@@ -2673,6 +2675,8 @@ void Track::AuditioningTrackInit(void)
 	/* TSF init */
 	//_trackSf = tsf_load_filename(SOUND_FONT_FILE);
 	tsf* sf = static_cast<tsf*>(_trackSf);
+	if (sf == nullptr)
+		return;
 	tsf_set_output(sf, TSF_MONO, INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
 	tsf_set_max_voices(sf, 8);// 8 note polyphony
 	tsf_channel_set_volume(sf, 0, 0.9f);//set to 0.9 and apply Master volume later
@@ -2680,17 +2684,23 @@ void Track::AuditioningTrackInit(void)
 }
 void Track::AuditioningTrackSetPreset(int presetindex)
 {
+	if (_trackSf == nullptr)
+		return;
 	tsf_channel_set_presetindex(static_cast<tsf*>(_trackSf), 0, presetindex);
 }
 void Track::AuditioningTrackClear(void)
 {
 	_noteOnList.clear();
+	if (_trackSf == nullptr)
+		return;
 	tsf_channel_note_off_all(static_cast<tsf*>(_trackSf), 0);
 }
 
 void Track::sfInit(void)
 {
 	tsf* sf = static_cast<tsf*>(_trackSf);
+	if (sf == nullptr)
+		return;
 	tsf_set_output(sf, TSF_MONO, INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
 	tsf_set_max_voices(sf, 8);// 8 note polyphony
 	tsf_channel_set_volume(sf, 0, 0.9f);//set to 0.9 and apply Master volume later
@@ -2719,16 +2729,27 @@ void Track::sfLoad(void)
 
 void Track::sfNoteOn(uint8_t channel, uint8_t key, float velocity)
 {
+	if (_trackSf == nullptr || !desktopPresetValid)
+		return;
 	tsf_channel_note_on(static_cast<tsf*>(_trackSf), channel, key, velocity);
 }
 
 void Track::sfNoteOff(uint8_t channel, uint8_t key)
 {
+	if (_trackSf == nullptr)
+		return;
 	tsf_channel_note_off(static_cast<tsf*>(_trackSf), channel, key);
 }
 
 void Track::sfSynthesizeAudio(void)
 {
+    float* desktopBuffer = _twentyMsBuffer;
+    audioBuff = juce::AudioBuffer<float>(&desktopBuffer, 1, INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+	if (_trackSf == nullptr)
+	{
+		std::fill_n(_twentyMsBuffer, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 0.0f);
+		return;
+	}
 #ifdef USE_INTERNAL_EFFECTS
 	float* TwentyMsBufferPtr = _twentyMsBuffer;
 	audioBuff = juce::AudioBuffer<float>(&TwentyMsBufferPtr, 1, INTERNAL_AUDIO_20MS_BLOCK_SIZE);
@@ -2813,6 +2834,8 @@ void Track::sfSynthesizeAudio(void)
 
 void Track::sfSetProgram(void)
 {
+	if (_trackSf == nullptr)
+		return;
 	if (_trackData->trackTxInstrument)
 	{
 		int preset = 0;
@@ -2821,7 +2844,12 @@ void Track::sfSetProgram(void)
 
 		//0 - 127 is for regular presets
 		//128 - 137 is fro drum presets
-		if (index > 127)
+        if (SoundFontProgram::isCustom(index))
+        {
+            bank = SoundFontProgram::bank(index);
+            preset = SoundFontProgram::program(index);
+        }
+        else if (index > 127)
 		{
 			bank = 128; //drum bank
 			preset = getTsfPresetFromIgniteIndex(index);
@@ -2830,12 +2858,14 @@ void Track::sfSetProgram(void)
 		{
 			preset = index;
 		}
-		tsf_channel_set_bank_preset(static_cast<tsf*>(_trackSf), 0, bank, preset);
+		desktopPresetValid = tsf_channel_set_bank_preset(static_cast<tsf*>(_trackSf), 0, bank, preset) != 0;
 	}
 }
 
 void Track::sfChangeProgram(void)
 {
+	if (_trackSf == nullptr)
+		return;
 	tsf_channel_note_off_all(static_cast<tsf*>(_trackSf), 0);
 	sfSetProgram();
 }
@@ -3061,6 +3091,7 @@ void Track::initStepRecord(void)
 
 void Track::stepRecordNote(const MidiMessage& message)
 {
+    if (message.getChannel() != _rxMidiChannel + 1 || getTrackPattern() == nullptr) return;
 	uint8_t status; uint8_t data1; uint8_t data2;
 
 	/* We need note-on message only, to identify the the mote and velocity
@@ -3099,7 +3130,9 @@ void Track::stepRecordNote(const MidiMessage& message)
 						tmp.note = data1;
 						tmp.velocity = data2;
 						tmp.lenInSteps = 0;
-						tmp.lenInTicks = 16;
+                        tmp.lenInTicks = std::max<int>(1, pattern->getTicksPerStep() / 2);
+                        tmp.step_id = _trackPlayStepId;
+                        tmp.onState = true;
 						tmp.offset = 0;
 
 						//if pattern already has same note in the current step, remove it
@@ -3193,7 +3226,7 @@ TickOffset_t Track::calculateOffsetWithinStep(TickOffset_t tick)
 void Track::liveRecord(const MidiMessage& message)
 {
 	auto data = message.getRawData();
-	midiData tmp = { message.getTimeStamp(), data[0], data[1], data[2] };
+	midiData tmp = { message.getTimeStamp(), data[0], uint8_t(message.getRawDataSize() > 1 ? data[1] : 0), uint8_t(message.getRawDataSize() > 2 ? data[2] : 0) };
 
 	auto ret = recordData.write(tmp);
 	if (ret == false)
@@ -3584,8 +3617,13 @@ void Track::recordTimeSequenceManagerUpdate(void)
 				std::string patternName = pattern->getName();
 
 				//delegate to a background thread, to avoid loading the playback
+#ifdef _WIN32
+                auto lock = _songManager->engine.lockDesktopState();
+                seqMgrNotifyAndUpdate(_songManager->engine.sequenceManager, patternName, _trackBarId, _trackPlayStepId);
+#else
 				std::thread seqMgrNotifyAndUpdateThread(seqMgrNotifyAndUpdate, _songManager->engine.sequenceManager, patternName, _trackBarId, _trackPlayStepId);
 				seqMgrNotifyAndUpdateThread.detach();
+#endif
 			}
 
 		}
@@ -3853,4 +3891,19 @@ void Track::actionsAtBarBoundary(std::string patternName, int8_t previousTrackBa
 
 	}//(_songManager->_state != SYSTEM_STATE::LIVE_RECORD)
 
+}
+
+void Track::unloadDesktopSoundFont()
+{
+    tsf_close(static_cast<tsf*>(_trackSf));
+    _trackSf = nullptr;
+}
+void Track::prepareDesktopMonitor()
+{
+    if (_trackSf == nullptr)
+    {
+        resetEffects();
+        effectsInit();
+        sfLoad();
+    }
 }

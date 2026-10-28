@@ -336,6 +336,12 @@ namespace ui
 	void InstrumentPreset::refreshData()
 	{
 		auto presetIndex = (int)instrPtr->getInstrumentData(mt::Ignite::instrumentsDataIndex::PROGRAM_INDEX) - 1;
+        if (presetIndex >= 0x40000000)
+        {
+            currentPresetGroup = 0;
+            setPresetGroup(0);
+            return; // opening the GM picker must not overwrite a custom bank selection
+        }
 		DBG(String(presetIndex));
 		auto group = presetIndex / 8;
 		auto index = presetIndex % 8;

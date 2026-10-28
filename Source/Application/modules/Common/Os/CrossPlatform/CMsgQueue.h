@@ -3,6 +3,7 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include "CThread.h"
 
 namespace Ignite
 {
@@ -26,6 +27,8 @@ namespace Ignite
 
 			bool put(const T& msg, TimeOut timeoutTicks = TimeOut::kWaitForever)
 			{
+				std::unique_lock<std::mutex> mlock(_mutex);
+				if (CThread::desktopShutdownRequested()) return false;
 				if (_queue.size() == _size && timeoutTicks == TimeOut::kNoWait)
 				{
 					return false;
@@ -33,9 +36,9 @@ namespace Ignite
 
 				while (_queue.size() >= _size)
 				{
-					std::this_thread::sleep_for(std::chrono::milliseconds(5));
+					_cond.wait_for(mlock, std::chrono::milliseconds(25));
+					if (CThread::desktopShutdownRequested()) return false;
 				}
-				std::unique_lock<std::mutex> mlock(_mutex);
 				_queue.push(msg);
 				mlock.unlock();
 				_cond.notify_one();
@@ -48,22 +51,29 @@ namespace Ignite
 				std::unique_lock<std::mutex> mlock (_mutex);
 				while (_queue.empty())
 				{
-					_cond.wait(mlock);
+					if (timeoutTicks == TimeOut::kNoWait || CThread::desktopShutdownRequested()) return false;
+					_cond.wait_for(mlock, std::chrono::milliseconds(25));
 				}
+				if (CThread::desktopShutdownRequested()) return false;
 				msg = _queue.front();
 				_queue.pop();
+				mlock.unlock();
+				_cond.notify_all();
 				return true;
 			}
 
 			bool reset (void)
 			{
+				std::lock_guard<std::mutex> lock(_mutex);
 				std::queue<T> empty;
 				std::swap(_queue, empty);
+				_cond.notify_all();
 				return true;
 			}
 
 			bool isEmpty (void)
 			{
+				std::lock_guard<std::mutex> lock(_mutex);
 				return _queue.empty();
 			}
 
@@ -71,9 +81,9 @@ namespace Ignite
 
 			uint32_t getSize (void) { return _size; }
 
-			uint32_t numQueued (void) { return static_cast<uint32_t>(_queue.size()); }
+			uint32_t numQueued (void) { std::lock_guard<std::mutex> lock(_mutex); return static_cast<uint32_t>(_queue.size()); }
 
-			uint32_t numVacant (void) { return static_cast<uint32_t>(_size - _queue.size()); }
+			uint32_t numVacant (void) { std::lock_guard<std::mutex> lock(_mutex); return static_cast<uint32_t>(_size - _queue.size()); }
 
 		private:
 			std::queue<T> _queue;

@@ -683,7 +683,7 @@ void TrackManager::saveTrack()
 
 
 	//filesystem save, all track Saved in a single file to save boot time and save memory in HW
-	engine.get_fileHandler ()->DeleteTrackList (SongMgr->getActiveSong ()->getName (), SongMgr->getActiveSong ()->editScene->getName ());
+	// CreateTracksWithList atomically replaces the previous track file.
 
 	std::vector<TrackData> TrackDataList;
 	for (auto it = SongMgr->getActiveSong ()->editScene->_sceneData->trackList.begin (); it != SongMgr->getActiveSong ()->editScene->_sceneData->trackList.end (); ++it)

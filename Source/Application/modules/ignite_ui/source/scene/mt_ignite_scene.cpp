@@ -893,7 +893,8 @@ namespace ui
 	{
 		auto songDataPtr = _pSongPtr->getSongDataPtr();
 
-		if (!songDataPtr->sceneCreated)
+		if (songDataPtr == nullptr || !songDataPtr->sceneCreated ||
+            !juce::isPositiveAndBelow(songDataPtr->selectedScene, songDataPtr->scene_data.size()))
 			return;
 
 		mt::Ignite::sceneData* scDataPtr = &songDataPtr->scene_data[songDataPtr->selectedScene];
@@ -916,7 +917,8 @@ namespace ui
 	{
 		auto songDataPtr = _pSongPtr->getSongDataPtr();
 
-		if (!songDataPtr->sceneCreated)
+		if (songDataPtr == nullptr || !songDataPtr->sceneCreated ||
+            !juce::isPositiveAndBelow(songDataPtr->selectedScene, songDataPtr->scene_data.size()))
 			return;
 
 		mt::Ignite::sceneData* scDataPtr = &songDataPtr->scene_data[songDataPtr->selectedScene];
@@ -956,7 +958,8 @@ namespace ui
 	void IgniteScene::updateSceneData(uint8_t param, int16_t value)
 	{
 		auto songDataPtr = _pSongPtr->getSongDataPtr();
-		if (!songDataPtr->sceneCreated)
+		if (songDataPtr == nullptr || !songDataPtr->sceneCreated ||
+            !juce::isPositiveAndBelow(songDataPtr->selectedScene, songDataPtr->scene_data.size()))
 			return;
 
 		mt::Ignite::sceneData* scDataPtr = &songDataPtr->scene_data[songDataPtr->selectedScene];
@@ -976,14 +979,16 @@ namespace ui
 	void IgniteScene::updateSceneData(uint8_t param, const uint32_t value)
 	{
 		auto songDataPtr = _pSongPtr->getSongDataPtr();
-		if (!songDataPtr->sceneCreated)
+		if (songDataPtr == nullptr || !songDataPtr->sceneCreated ||
+            !juce::isPositiveAndBelow(songDataPtr->selectedScene, songDataPtr->scene_data.size()))
 			return;
 	}
 
 	void IgniteScene::updateSceneData(uint8_t param, const float value)
 	{
 		auto songDataPtr = _pSongPtr->getSongDataPtr();
-		if (!songDataPtr->sceneCreated)
+		if (songDataPtr == nullptr || !songDataPtr->sceneCreated ||
+            !juce::isPositiveAndBelow(songDataPtr->selectedScene, songDataPtr->scene_data.size()))
 			return;
 
 		mt::Ignite::sceneData* scDataPtr = &songDataPtr->scene_data[songDataPtr->selectedScene];
@@ -1002,7 +1007,8 @@ namespace ui
 	void IgniteScene::updateSceneData(uint8_t param, const std::string& value)
 	{
 		auto songDataPtr = _pSongPtr->getSongDataPtr();
-		if (!songDataPtr->sceneCreated)
+		if (songDataPtr == nullptr || !songDataPtr->sceneCreated ||
+            !juce::isPositiveAndBelow(songDataPtr->selectedScene, songDataPtr->scene_data.size()))
 			return;
 
 		mt::Ignite::sceneData* scDataPtr = &songDataPtr->scene_data[songDataPtr->selectedScene];

@@ -125,6 +125,29 @@ void FrountPannel::EnginePublish(moduleId_t module, moduleId_t moduleSrc, paramI
 	return;
 }
 
+void FrountPannel::simulatorInput(FrontPannelParam param, uint8_t value)
+{
+    const auto id = static_cast<paramId_t>(param);
+    if (id >= static_cast<paramId_t>(FrontPannelParam::paramKey_End_KeyMapping)) return;
+    const bool rotation = (id >= 62 && id <= 88);
+    if (!rotation) KeyStatus[id] = value;
+    int held = 0;
+    for (int i = 0; i < 62; ++i)
+        if (KeyStatus[i] == static_cast<uint8_t>(FrontPannelKeyStatus::paramKeyStatusPressed)
+            || KeyStatus[i] == static_cast<uint8_t>(FrontPannelKeyStatus::paramKeyStatusOnHold)) ++held;
+    multiKeyPressed = held > 1;
+    if (param == FrontPannelParam::paramKey_INTERNALSOUNDS)
+        static_cast<IgniteEngine*>(_PUiVirtualEngine.get())->songManager->handleMcuSpecialKey(id,
+            value == static_cast<uint8_t>(FrontPannelKeyStatus::paramKeyStatusReleased) ? 0 : 1);
+    if (!rotation && value == static_cast<uint8_t>(FrontPannelKeyStatus::paramKeyStatusOnHold)
+        && param != FrontPannelParam::paramKey_PAGESHIFT)
+        Handle_NavigationKey(AppMainmode::getMainModeInstance(), id, value);
+    else
+        HandleKeyIndication(AppMainmode::getMainModeInstance(), id, value);
+    if (!rotation && value == static_cast<uint8_t>(FrontPannelKeyStatus::paramKeyStatusReleased))
+        KeyStatus[id] = static_cast<uint8_t>(FrontPannelKeyStatus::paramKeyStatusIdle);
+}
+
 bool FrountPannel::HandleKeyIndication(AppMainmode* AppMainmodeRef, paramId_t param, uint8_t KeyValue)
 {
 	bool handled = true;
@@ -159,7 +182,7 @@ bool FrountPannel::HandleKeyIndication(AppMainmode* AppMainmodeRef, paramId_t pa
 			}
 			break;
 		default:
-			if ((paramId_t)param > (paramId_t)FrontPannelParam::paramall && (paramId_t)param < (paramId_t)FrontPannelParam::paramFrontPannelMax)
+			if ((paramId_t)param >= (paramId_t)FrontPannelParam::paramall && (paramId_t)param < (paramId_t)FrontPannelParam::paramFrontPannelMax)
 				Handle_NavigationKey(AppMainmodeRef, param, KeyValue);
 			break;
 		}

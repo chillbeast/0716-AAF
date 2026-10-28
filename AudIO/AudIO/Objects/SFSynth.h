@@ -31,11 +31,11 @@ namespace AudIO
         void setDefaultSoundFont();
 
         void        prepareToPlay( uint32_t samplerate, uint32_t blocksize ) override;
-        void        setParameter( uint32_t index, float value ) override;
-        float       getParameter( uint32_t index ) override;
+        void        setParameter( int index, float value ) override;
+        float       getParameter( int index ) override;
         const char* getType() const override;
-        void        getParameterLabel( uint32_t index, char* text ) override;
-        void        getParameterName( uint32_t index, char* text ) override;
+        void        getParameterLabel( int index, char* text ) override;
+        void        getParameterName( int index, char* text ) override;
         int         getNumParameters() override { return kParamMax; }
         float       getMin( uint32_t index ) const override;
         float       getMax( uint32_t index ) const override;

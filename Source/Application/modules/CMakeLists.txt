@@ -1,7 +1,3 @@
-set_property(TARGET ${TargetName}
-        PROPERTY CXX_STANDARD 17
-)
-
  add_subdirectory(Common) 
 juce_add_modules(
 	Common

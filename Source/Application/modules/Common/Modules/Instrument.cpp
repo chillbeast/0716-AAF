@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <vector>
 #include <string>
+#include <memory>
 #include "Common/Modules/Instrument.h"
 #include "Firmware/Application/Model/ModelParams.h"
 
@@ -133,31 +134,22 @@ Instrument::Instrument (InstrumentData instrumentData, /*int8_t tvKnob,*/ Instru
 }
 
 Instrument::Instrument (const Instrument& source)
-	: Instrument (source._instrumentData->id, source._instrumentData->instrumentName, source._instrumentData->midiPort, source._instrumentData->midiChannel, source._instrumentMgr)
+    : _instrumentMgr(source._instrumentMgr), _instrumentData(new InstrumentData(*source._instrumentData)),
+      _activeKnobId(source._activeKnobId)
 {
-	//copy remaining fields
-	this->_activeKnobId = source._activeKnobId;
+}
 
-	this->_instrumentData->instrumentDispName = source._instrumentData->instrumentDispName;
-	this->_instrumentData->defaultNote = source._instrumentData->defaultNote;
-	this->_instrumentData->internalSoundPgm = source._instrumentData->internalSoundPgm;
-	this->_instrumentData->internalSound = source._instrumentData->internalSound;
-	this->_instrumentData->multiTimbralStatus = source._instrumentData->multiTimbralStatus;
-	this->_instrumentData->polySpreadStatus = source._instrumentData->polySpreadStatus;
-	this->_instrumentData->transposeDefeatStatus = source._instrumentData->transposeDefeatStatus;
-	this->_instrumentData->ftsDefeatStatus = source._instrumentData->ftsDefeatStatus;
-	this->_instrumentData->editTrackThruStatus = source._instrumentData->editTrackThruStatus;
-	this->_instrumentData->cc0BankMStatus = source._instrumentData->cc0BankMStatus;
-	this->_instrumentData->cc0BankLStatus = source._instrumentData->cc0BankLStatus;
-	this->_instrumentData->displayNoteNum = source._instrumentData->displayNoteNum;
-	this->_instrumentData->preSendPgmChange = source._instrumentData->preSendPgmChange;
-	this->_instrumentData->UsedByCount = source._instrumentData->UsedByCount;
-	this->_instrumentData->usedByList = source._instrumentData->usedByList;
-	this->_instrumentData->tv = source._instrumentData->tv;
-	this->_instrumentData->tvCount = source._instrumentData->tvCount;
-	this->_instrumentData->id = source._instrumentData->id;
-	this->_instrumentData->tm = source._instrumentData->tm;
-	this->_instrumentData->pgmChangeData = source._instrumentData->pgmChangeData;
+Instrument& Instrument::operator=(const Instrument& source)
+{
+    if (this != &source)
+    {
+        auto data = std::make_unique<InstrumentData>(*source._instrumentData);
+        delete _instrumentData;
+        _instrumentData = data.release();
+        _activeKnobId = source._activeKnobId;
+        _instrumentMgr = source._instrumentMgr;
+    }
+    return *this;
 }
 
 Instrument::~Instrument ()

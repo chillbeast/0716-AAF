@@ -22,7 +22,7 @@ InstrumentManager::InstrumentManager (IParamChangeListener* listener, IgniteEngi
 	AddParameter<uint8_t> ((paramId_t)InstrumentParam::paramUndoCmd, 0, 127, 0);
 
 	AddParameter<uint8_t> ((paramId_t)InstrumentParam::paramDefaultNote, 0, 127, 0);
-	AddParameter<int> ((paramId_t)InstrumentParam::paramInternalSoundPgm, -1, 5000, 0);//depends on sound font file, max value in current SF is < 1000
+	AddParameter<int> ((paramId_t)InstrumentParam::paramInternalSoundPgm, -1, 0x7fffffff, 0);//depends on sound font file, max value in current SF is < 1000
 	AddParameter<bool> ((paramId_t)InstrumentParam::paramInternalSound, false, true, false);
 	AddParameter<bool> ((paramId_t)InstrumentParam::paramMultiTimbralStatus, false, true, false);
 	AddParameter<bool> ((paramId_t)InstrumentParam::paramPolySpreadStatus, false, true, false);
@@ -576,8 +576,8 @@ void InstrumentManager::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->saveInstrument(currentInstrumentName, getInstrumentData(currentInstrumentName));
-	ClearUndoList();
+	if (engine.fileHandler->saveInstrument(currentInstrumentName, getInstrumentData(currentInstrumentName)) == FILE_OK)
+        ClearUndoList();
 
 }
 void InstrumentManager::SaveInstrument (std::string name)

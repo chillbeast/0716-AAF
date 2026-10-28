@@ -28,6 +28,7 @@
 #include "idevice.h"
 #include "InstrumentManager.h"
 #include "PatternManager.h"
+#include "FixedAudioBlockAdapter.h"
 
 #ifdef __linux__
 
@@ -68,7 +69,7 @@ namespace Ignite
 		std::string deviceName;
 	};
 
-	class SongManager : public Module, public juce::AudioIODeviceCallback,
+	class SongManager : public Module, public juce::AudioIODeviceCallback, public juce::AudioSource,
 		public IInstrumentListener, private Timer, public juce::Component
 	{
 		struct PendingMidiMsg {
@@ -84,6 +85,7 @@ namespace Ignite
 		SongManager& operator= (SongManager&&) = delete;
 
 		~SongManager();
+		void shutdownDesktop();
 
 		void init(void);
 
@@ -105,7 +107,6 @@ namespace Ignite
 		std::string getName(void);
 		//CSong* getSong (uint8_t index);
 		//bool getFillMode(void);
-		int32_t getSongCount(void);
 
 		void setActiveSong (int32_t index);
 		void setTempo(float val);
@@ -130,8 +131,8 @@ namespace Ignite
 		void getParam(moduleId_t moduleSrc, paramId_t param)override;
 
 		void saveSongData(void);
-		void saveSong(void);
-		void saveSong(CSong& song);
+		bool saveSong(void);
+		bool saveSong(CSong& song);
 		bool populateSongFromFileSystem(int32_t id);
 		void SetDefaultUndoListData();
 		void resetToDefaultParamValues (std::vector<SongParam> paramList);
@@ -261,6 +262,13 @@ namespace Ignite
 		virtual void audioDeviceStopped();
 		void startJuceAudioCallback (void);
 		void stopJuceAudioCallback (void);
+		std::atomic<uint64_t> desktopAudioCallbacks{0};
+		std::atomic<float> desktopAudioPeak{0};
+		std::atomic<uint64_t> desktopSourceSamples{0}, desktopOutputSamples{0};
+		std::atomic<double> desktopHostSampleRate{0};
+		void prepareToPlay(int, double) override;
+		void releaseResources() override;
+		void getNextAudioBlock(const juce::AudioSourceChannelInfo&) override;
 
 		virtual void handleInternalPgmChange (int32_t instrId, int programId)override;
 		virtual void handleMidiSettingChange(int32_t instrId)override;
@@ -541,10 +549,27 @@ namespace Ignite
 		void handleCommandMessage(int id);
 		juce::AudioDeviceManager *dm = nullptr;
 		void* get_tsf_instance();
+		struct SoundFontPreset { int bank, program, index; std::string name; };
+		std::vector<SoundFontPreset> getDesktopSoundFontPresets();
+		bool loadDesktopSoundFont(const std::string& path, std::string& error);
+		std::string desktopPresetName(int program);
+		std::string desktopSoundFontPath;
+		static juce::File desktopSettingsFile();
+		void receiveDesktopMidi(uint8_t port, const MidiMessage& message);
+		void desktopPanic();
+		bool desktopPreviewPreset(int presetIndex);
+		void desktopPreviewNoteOff();
+		void desktopStopPreview();
+		bool desktopMonitorEnabled = true;
+		std::function<bool(const MidiMessage&, uint8_t)> desktopMidiOutput;
+		std::atomic<uint64_t> desktopMidiReceived{0};
+		void renderDesktopMonitor(AudioDataType* buffer);
 	//	juce::dsp::ProcessorChain<juce::Reverb, juce::dsp::Chorus<float>, dsp::IIR::Filter<float>, dsp::IIR::Filter<float>, juce::dsp::LadderFilter<float>, juce::dsp::Gain<float>> processorChain;
 
 	private:
 		int soundFontProgramCount;
+		FixedAudioBlockAdapter<INTERNAL_AUDIO_20MS_BLOCK_SIZE> audioBlockAdapter;
+		juce::ResamplingAudioSource audioResampler{this, false, 1};
 		void* _songTSf = nullptr;
 		void init_tsf();
 		static SongManager *instance;

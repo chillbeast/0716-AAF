@@ -95,7 +95,7 @@ void CPktMgr::PushByteToRxFifo( uint8_t f_ui8Data )
             m_ui8FrameSize = ( f_ui8Data );
             m_enFrmState   = EN_FRM_STATE_DATA;
 
-            if( m_ui8FrameSize == 0x00 )
+            if( m_ui8FrameSize <= PKTMGR_CRC_BYTE )
             {
                 m_enFrmState = EN_FRM_STATE_CRC;
             }
@@ -197,5 +197,5 @@ void CPktMgr::BuildAndTransmitPacket( CPktMgr::HWMsg_t& f_HwMsg, std::vector<cha
     f_txData.push_back( CrcGen( f_txData ) );
     //f_txData.push_back('\n');
 
-    m_ui8TxCommand = m_ui8ArrTransmitBuffer[EN_FRM_STATE_ID];
+    m_ui8TxCommand = static_cast<uint8_t>(f_HwMsg.pktCmd);
 }

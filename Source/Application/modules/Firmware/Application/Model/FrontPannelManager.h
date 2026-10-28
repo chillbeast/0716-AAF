@@ -5,6 +5,7 @@
 #include <string>
 #include <mutex>
 #include <atomic>
+#include <array>
 #include <condition_variable>
 #include "module.h"
 #include "Common/Os/CrossPlatform/CThread.h"
@@ -85,6 +86,9 @@ namespace Ignite
 		void ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool SendNotification);
 
 		void FrontPannelStartThreads(void);
+		void shutdownDesktop();
+		uint8_t simulatorLed(uint8_t id) const { return id < simulatorLeds.size() ? simulatorLeds[id].load() : 0; }
+		std::array<std::atomic<uint8_t>, 116> simulatorLeds{};
 		void handleCommandMessage(int id);
 		void sendMidiMessageExternal(MidiMessage msg, uint8_t midiport);
 		SongManager* getSongManager();

@@ -42,6 +42,12 @@ namespace Ignite {
 				_params.reserve (_noOfParameters);
 			}
 		}
+		virtual ~Module()
+		{
+			for (auto* parameter : _params) delete parameter;
+		}
+		Module(const Module&) = delete;
+		Module& operator=(const Module&) = delete;
 		template <typename T>
 		bool AddParameter (paramId_t paramId, T Min, T Max, T Default = (T)0)
 		{

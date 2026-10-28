@@ -16,7 +16,7 @@ void FrontPannelLed::FrontPannelLedExecuteThreadFunction(void)
 {
 	int wait = 0;
 	FrontPannelLedExecuteThread.delayMs(1000);
-	while (1)
+	while (!CThread::desktopShutdownRequested())
 	{
 		wait = FRONT_PANEL_LED_MAX_WAIT;
 		PatternValueUpdate();

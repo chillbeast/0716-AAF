@@ -129,4 +129,7 @@ target_compile_features(AirWindows_plugins PRIVATE cxx_std_17)
 
 # Find packages go here.
 # Add 
-add_subdirectory(AudIO/Example)
+option(AUDIO_BUILD_EXAMPLES "Build the standalone AudIO example programs" OFF)
+if(AUDIO_BUILD_EXAMPLES)
+    add_subdirectory(AudIO/Example)
+endif()

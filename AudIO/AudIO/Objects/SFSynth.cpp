@@ -49,7 +49,7 @@ namespace AudIO
         _tsf->setMaxVoices(48); //TODO Causes a crash
     }
 
-    void SFSynth::setParameter( uint32_t index, float value )
+    void SFSynth::setParameter( int index, float value )
     {
         switch( index )
         {
@@ -61,7 +61,7 @@ namespace AudIO
         }
     }
 
-    float SFSynth::getParameter( uint32_t index )
+    float SFSynth::getParameter( int index )
     {
         switch( index )
         {
@@ -102,13 +102,13 @@ namespace AudIO
         return "SFSynth";
     }
 
-    void SFSynth::getParameterLabel( uint32_t index, char* text )
+    void SFSynth::getParameterLabel( int index, char* text )
     {
         if( text )
             strcpy( text, utils::emptyString );
     }
 
-    void SFSynth::getParameterName( uint32_t index, char* text )
+    void SFSynth::getParameterName( int index, char* text )
     {
         if( text )
         {
@@ -124,8 +124,8 @@ namespace AudIO
 
     void SFSynth::prepareToPlay( uint32_t samplerate, uint32_t blocksize )
     {
-        _sampleRate = samplerate;
-        _blockSize = blocksize;
+        Object::prepareToPlay(samplerate, blocksize);
+        if (!_tsf) return;
         _tsf->setOutputSpecs( OutputMode::StereoUnweaved, blocksize, samplerate, m_gain );
 
 
@@ -144,10 +144,10 @@ namespace AudIO
     {
         if( !m_bypass && _tsf )
         {
-            _tsf->renderMono( buffer.getOutputBuffer(0), _blockSize );
+            _tsf->renderMono( buffer.getOutputBuffer(0), blockSize() );
             if( buffer.getNumOutputChannels() > 1 )
             {
-                memcpy( buffer.getOutputBuffer( 1 ), buffer.getOutputBuffer( 0 ), _blockSize * sizeof( float ) );
+                memcpy( buffer.getOutputBuffer( 1 ), buffer.getOutputBuffer( 0 ), blockSize() * sizeof( float ) );
             }
         }
     }

@@ -616,6 +616,10 @@ namespace ui
 		if (presetIndex > 137)
 			presetIndex = 137;
 		presetPgm.setButtonText("PRESET \n" + mt::Ignite::presetList.at(presetIndex));
+        const auto actualProgram = int(instrPtr->getInstrumentData(mt::Ignite::instrumentsDataIndex::PROGRAM_INDEX)) - 1;
+        if (actualProgram >= 0x40000000)
+            if (auto* engine = static_cast<Ignite::IgniteEngine*>(_PUiVirtualEngine.get()))
+                presetPgm.setButtonText("PRESET \n" + juce::String(engine->songManager->desktopPresetName(actualProgram)));
 	}
 
 	int IgniteInstrumentOpt::isEditing()

@@ -10,6 +10,7 @@ namespace ui
 		~FrountPannel();
 
 		void EnginePublish(moduleId_t module, moduleId_t moduleSrc, paramId_t param, const AnyType& value, bool isResponse);
+		void simulatorInput(FrontPannelParam param, uint8_t value);
 		float getTapTempoValue() { return tapTempoValue; };
 
 		static FrountPannel* GetFrountPannelInstance()

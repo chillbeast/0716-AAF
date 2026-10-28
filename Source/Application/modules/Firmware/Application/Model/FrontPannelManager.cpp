@@ -792,7 +792,7 @@ void FrontPannelManager::FrontPanneEthernetWatchThreadFunction(void)
 	sockaddr_in clientAddress;
 	socklen_t clientAddrLen = sizeof(clientAddress);
 
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
 		if (clientSocket.load() == -1)
 		{
@@ -835,6 +835,19 @@ void FrontPannelManager::FrontPannelStartThreads(void)
 #if defined FP_SIM_LINUX_REMOTE_SERVER
 	FrontPanneEthernetWatchThreadFunctionCB = [](void* context) { static_cast<FrontPannelManager*> (context)->FrontPanneEthernetWatchThreadFunction(); };
 	FrontPanneEthernetWatchThread.startThread(FrontPanneEthernetWatchThreadFunctionCB, this);
+#endif
+}
+void FrontPannelManager::shutdownDesktop()
+{
+#ifdef _WIN32
+    stopTimer();
+    signalThreadShouldExit();
+    juce::Thread::stopThread(3000);
+    FrontPannelExternalReadThread.stopThread();
+    FrontPannelExternalWriteThread.stopThread();
+    FrontPannelInternalProcessThread.stopThread();
+    FrontPannelLinuxWatchThread.stopThread();
+    FpLedHandler->FrontPannelLedExecuteThread.stopThread();
 #endif
 }
 
@@ -891,7 +904,10 @@ void FrontPannelManager::run()
 			continue;
 		}
 		if (DataToProcess < 4)
+		{
+			wait(1);
 			continue;
+		}
 
 		SysMessage _sysMessage;
 		_sysMessage.Direction = DIRECTION_IN;
@@ -1216,10 +1232,13 @@ bool FrontPannelManager::sendAsMcuMsg(std::vector<uint8_t> data)
 
 void FrontPannelManager::FrontPannelExternalReadThreadFunction(void)
 {
+#if defined(_WIN32) && !defined(FP_TEST_KEYBRD) && !defined(FP_REMOTE_CLIENT_RECIVE_WIN)
+    return; // No physical MCU transport is present in the desktop application.
+#endif
 	FrontPannelExternalReadThread.delayMs(FRONT_PANEL_THREAD_INIT_WAIT); //Wait till Init Complete
 	const int bufferSize = 256;
 	char szBuff[bufferSize] = { 0 };
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
 		SysMessage _sysMessage;
 		_sysMessage.Header = SYS_KEY_MSG;
@@ -1387,10 +1406,10 @@ void FrontPannelManager::FrontPannelExternalWriteThreadFunction(void)
 	FrontPannelExternalWriteThread.delayMs(FRONT_PANEL_THREAD_INIT_WAIT); //Wait till Init Complete
 	SysMessage fpQData = { 0, };
 
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
 		fpQData = { 0, };
-		FrontPanneExternalWriteQ.get(fpQData, TimeOut::kWaitForever);
+		if (!FrontPanneExternalWriteQ.get(fpQData, TimeOut::kWaitForever)) break;
 		std::unique_lock<std::mutex> lock(midiSendMutx); //SYS_MIDI_MSG - is priority not using FrontPanneExternalWriteQ
 		while (!midiSendDone) { // Manually check the condition
 			midiSendWait.wait(lock);
@@ -1447,10 +1466,10 @@ void FrontPannelManager::FrontPannelInternalProcessThreadFunction(void)
 {
 	FrontPannelInternalProcessThread.delayMs(FRONT_PANEL_THREAD_INIT_WAIT); //Wait till Init Complete
 	SysMessage fpQData = { 0, };
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
 		fpQData = { 0, };
-		FrontPanneExternalReadQ.get(fpQData, TimeOut::kWaitForever);
+		if (!FrontPanneExternalReadQ.get(fpQData, TimeOut::kWaitForever)) break;
 		if (fpQData.Direction == DIRECTION_IN)
 		{
 			FpUtility->SysMessageHandlerFromMCU(fpQData);
@@ -1468,7 +1487,7 @@ void FrontPannelManager::FrontPannelLinuxWatchThreadFunction(void)
 		DBG(String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "WARN setup event failed");
 		//TODO: implement recovery?
 	}
-	while (1)
+	while (!CThread::desktopShutdownRequested())
 	{
 		FrontPannelInternalProcessThread.delayMs(FRONT_PANEL_THREAD_WAIT_1_SEC); //Wait 1 sec
 		read(PowerKeyFd, &PowerKeyEvent, sizeof(struct input_event));
@@ -1755,6 +1774,7 @@ void FrontPannelManager::onParameterChange(moduleId_t moduleSrc, ParameterBase* 
 void FrontPannelManager::ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool SendNotification)
 {
 	paramId_t paramId = param->GetParamID();
+	if (paramId < simulatorLeds.size()) simulatorLeds[paramId] = param->getValue().get<uint8_t>();
 	uint8_t inPlace = 0xFF;
 #ifdef FP_TEST_KEYBRD
 	if (initDone && _toggleButtonArray[0] != nullptr)

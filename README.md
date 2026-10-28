@@ -4,6 +4,16 @@
 
 # Behringer IGNITE (BE 0716-AAF)
 
+**Community Windows release:** [Downloads](https://github.com/chillbeast/0716-AAF/releases) · [User manual](docs/manual/USER_MANUAL.md) · [Printable PDF](docs/manual/USER_MANUAL.pdf) · [Release notes](RELEASE_NOTES.md)
+
+Extract the Windows package and run `Ignite.exe`, then choose your own SF2 in **DESKTOP SETTINGS → SoundFonts**. The package includes the manual as PDF and self-contained HTML, plus corresponding source. This fork's desktop work is on `desktop-build`; `main` preserves the upstream baseline.
+
+> **Local desktop-build branch:** Windows build and interactive hardware simulator bring-up are documented in [Build and run](docs/BUILD_WINDOWS.md), [capability map](docs/CAPABILITIES.md), [simulator guide](docs/manual/USER_MANUAL.md), and [development handoff](docs/DEVELOPMENT.md). This is a community development build, not an official firmware release.
+
+The Windows simulator includes audio/device settings, MIDI routing, a bank-aware SoundFont browser with preview, step/live MIDI recording repairs and project backup ZIP export/restore. See [desktop features](docs/DESKTOP_FEATURES.md). Build and verify with `scripts/build-windows.ps1 -DebugBuild -Package`.
+
+![IGNITE desktop simulator](docs/images/ignite-simulator.png)
+
 > There is a Creator in every human being. Our mission is to empower those who have not and cannot.
 
 Source code for the Behringer IGNITE 64-channel multi-track sequencer.
@@ -85,3 +95,5 @@ images in `docs/images/`. See the
 [trademark policy](https://github.com/MusicTribeOpenSource/.github/blob/main/TRADEMARKS.md).
 
 Copyright (c) MUSIC Tribe.
+
+Desktop reliability repairs and repeatable workflow tests: [audit notes](docs/AUDIT_FIXES.md).

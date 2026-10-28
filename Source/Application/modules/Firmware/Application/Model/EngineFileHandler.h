@@ -1,4 +1,5 @@
 #include "common_defs/source/EngineDataStruct.h"
+#include <filesystem>
 
 namespace Ignite
 {
@@ -112,6 +113,11 @@ namespace Ignite
 		bool isGetDataCorrupted() { return isDataCorrupted;};
 
 	private:
+		FileHandlerError writeSongInfo(const std::filesystem::path&, const SongData&);
+		FileHandlerError writeScene(const std::filesystem::path&, const SceneData&);
+		FileHandlerError writeSceneInfo(const std::filesystem::path&, const SceneData&);
+		FileHandlerError writeTracks(const std::filesystem::path&, const std::vector<TrackData>&);
+		FileHandlerError writePattern(const std::filesystem::path&, const PatternData&);
 		IgniteEngine& engine;
 		bool isDataCorrupted = false;
 		bool GetSystemStatus(void);

@@ -12,7 +12,7 @@ namespace AudIO
 {
 
     // STATIC helper functions...
-    bool _find( objectMeta& meta, std::list<objectMeta*>& l )
+    inline bool _find( objectMeta& meta, std::list<objectMeta*>& l )
     {
         return std::find( l.begin(), l.end(), &meta ) != l.end();
     }

@@ -123,8 +123,9 @@ namespace Ignite
 		explicit Step (Pattern* pat, int16_t id, uint8_t note, float length, uint8_t velocity, uint8_t delay);
 		Step (Pattern* pat, StepData& stepData);
 		Step (const Step&);
-		Step& operator= (const Step&) = default;
-		~Step () = default;
+		Step& operator= (const Step&);
+		~Step ();
+		void rebindPattern(Pattern* pattern) { _pattern = pattern; }
 
 		StepDataUpdateStatus SetStepDataList (ClientPatternStepData* stepData);
 		StepDataUpdateStatus SetStepData (ClientPatternStepData& stepData);

@@ -58,8 +58,10 @@ namespace Ignite
 	public:
 		explicit Bar (Pattern* pat, uint16_t BarID, bool BarTransposeDefeat, uint8_t BarRepeatCount, bool gBarSync, PatternDirection direction, std::list<StepData> StepDataList);
 		Bar (Pattern *pat, const Bar&);
-		Bar& operator= (const Bar&) = default;
-		~Bar () = default;
+		Bar(const Bar&);
+		Bar& operator= (const Bar&);
+		~Bar ();
+		void rebindPattern(Pattern* pattern);
 
 		BarData* _BarData;
 

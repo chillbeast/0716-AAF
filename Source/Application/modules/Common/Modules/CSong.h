@@ -17,7 +17,7 @@ namespace Ignite
 		explicit CSong (int32_t id, std::string name, float tempo, uint8_t swing, int32_t numscenes, SongManager* songmgr/*,bool mode=false*/);
 		CSong (const CSong& source);
 		CSong (const SongData songData, SongManager* songMgr, int32_t editSceneId, int32_t playSceneId, int32_t startSceneId, int32_t endSceneId, int32_t jumpSceneId);
-		CSong& operator= (const CSong&) = default;
+		CSong& operator= (const CSong& source);
 		~CSong ();
 
 		void setTempo (float val);
@@ -72,5 +72,7 @@ namespace Ignite
 		SongManager* _songManager = nullptr;
 
 		bool songNameDirtyFlag = false;
+	private:
+		void rebindSelection();
 	};
 }

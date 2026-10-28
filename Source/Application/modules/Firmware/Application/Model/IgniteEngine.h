@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <mutex>
 #include "Common/Os/CrossPlatform/CThread.h"
 #include "Common/Modules/IModule.h"
 #include "common_defs/source/IgniteMessage.h"
@@ -30,7 +31,7 @@
 #include "Firmware/Application/Model/SettingsManager/SettingsRecordCnfg.h"
 #include "Firmware/Application/Model/SequenceManager.h"
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) && !defined(_WIN32)
 #define ENABLE_PARALLEL_EXE //Enable for parallel execution in Engine
 #endif
 
@@ -41,7 +42,18 @@ namespace Ignite
 	class IgniteEngine : public IDevice, public IParamChangeListener
 	{
 	public:
+		// Serialises model edits, clock events, MIDI and desktop synthesis.
+		mutable std::recursive_mutex stateMutex;
+		[[nodiscard]] std::unique_lock<std::recursive_mutex> lockDesktopState() const
+		{
+#ifdef _WIN32
+			return std::unique_lock<std::recursive_mutex>(stateMutex);
+#else
+			return {};
+#endif
+		}
 		IgniteEngine();
+		void shutdownDesktop();
 
 		void initialize(SongManager* songmgr, PatternManager* patternmgr, InstrumentManager* instrumentmgr);
 		bool isIDeviceReady(void) override
@@ -138,6 +150,7 @@ namespace Ignite
 		EngineFileHandler* fileHandler = nullptr;
 		FrontPannelManager* frontPannelManager = nullptr; //for faster access
 		SongManager* songManager = nullptr;
+		SceneManager* sceneManager = nullptr;
 		SettingsMidiCnfg* settingsMidiCnfg = nullptr;
 		SettingsCvioCnfg* settingsCvioCnfg = nullptr;
 		SettingsGeneralCnfg* settingsGeneralCnfg = nullptr;

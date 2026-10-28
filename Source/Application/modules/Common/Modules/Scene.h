@@ -19,7 +19,7 @@ namespace Ignite
 	public:
 		explicit Scene (int32_t id, std::string name, float tempo, int8_t swing, uint8_t numtracks, uint64_t trackMute, SongManager* songManager);
 		Scene (const Scene&);
-		Scene& operator= (const Scene&) = default;
+		Scene& operator= (const Scene& source);
 		~Scene ();
 
 		void setTempo (float val);
@@ -72,5 +72,7 @@ namespace Ignite
 		SongManager* _songManager = nullptr;
 
 		MuteHoldType _sceneMuteHold = MuteHoldType::Off;
+	private:
+		void rebindSelection();
 	};
 }

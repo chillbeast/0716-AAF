@@ -34,8 +34,11 @@
    	Clear/Delete files on target, before start, otherwise data will get appended */
 //#define LOG_PCM_TO_FILE
 
-/* Enable to use thread for play*/
+// The desktop clock visits tracks synchronously under the engine state lock.
+// Queuing raw Track pointers allowed edits to delete tracks before playback used them.
+#ifndef _WIN32
 #define ENABLE_THREADS_TO_PLAY
+#endif
 
 #ifdef LOG_PCM_TO_FILE
 

@@ -339,7 +339,8 @@ namespace ui
 			if (TrackParamsList.size() > 0)
 			{
 				uint8_t numParam = 8;// number of params for each track - return by TrackParam::paramTrackInfoList
-				for (auto tid = 0; tid < (numOfTrackBanks * 16); tid++)
+                const int returnedTracks = int(TrackParamsList.size() / numParam);
+                for (int tid = 0; tid < std::min(numOfTrackBanks * 16, returnedTracks); ++tid)
 				{
 					int pos = TrackParamsList[numParam * tid].startPos;
 					scenePtr->setSceneData(mt::Ignite::sceneDataIndex::CURRENT_TRACK, pos, true);
@@ -357,6 +358,7 @@ namespace ui
 					edit_track = 0;
 					bootup_state = false;
 				}
+                edit_track = std::clamp(edit_track,0,std::max(0,returnedTracks-1));
 				_PUiVirtualEngine->SetCommand((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleTrack, (paramId_t)TrackParam::paramActiveTrack, edit_track);
 				scenePtr->setSceneData(mt::Ignite::sceneDataIndex::CURRENT_TRACK, edit_track, true);
 				trackGridPtr->updateTrackButtonState();

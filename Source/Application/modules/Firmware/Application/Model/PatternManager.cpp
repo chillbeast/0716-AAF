@@ -250,9 +250,9 @@ void PatternManager::SaveData()
 	if (UndoDataList.size() == 1)
 		return;
 	Pattern* pattern = nullptr;
-	if (UndoDataList.size() > 1 && UndoDataList.back().UpdateReasonType != PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT)
+	if (UndoDataList.size() > 1 && UndoDataList.front().UpdateReasonType != PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT)
 	{
-		ClientPatternData _clientPatternData = UndoDataList.back()._clientPatternData;
+		ClientPatternData _clientPatternData = UndoDataList.front()._clientPatternData;
 		pattern = GetPattern(_clientPatternData.patternName);
 		SavePattern(pattern, false);
 	}
@@ -267,22 +267,15 @@ void PatternManager::clearAllPattern ()
 
 void PatternManager::SavePattern(Pattern* pattern, bool isCreate)
 {
-	if (pattern != nullptr)
-	{
-		std::string patternName = pattern->getName();
-		if ((!isCreate) && (!UndoDataList.empty()))
-		{
-			ClientPatternData _clientPatternData = UndoDataList.back()._clientPatternData;// Default data
-			if (patternName != _clientPatternData.patternName)
-			{
-				// Pattern renamed, delete old Pattern, create with new pattern name
-				engine.fileHandler->DeletePattern(_clientPatternData.patternName);
-			}
-		}
-
-		engine.fileHandler->Createpattern(pattern->getName(), *(pattern->_patternData));
-		UpdateUndoList(pattern->getName(), PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT);
-	}
+    if (pattern == nullptr) return;
+    const auto patternName = pattern->getName();
+    if (engine.fileHandler->Createpattern(patternName, *pattern->_patternData) != FILE_OK) return;
+    if (!isCreate && !UndoDataList.empty())
+    {
+        const auto oldName = UndoDataList.back()._clientPatternData.patternName;
+        if (oldName != patternName) engine.fileHandler->DeletePattern(oldName);
+    }
+    UpdateUndoList(patternName, PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT);
 }
 
 std::string PatternManager::addPattern(void)
@@ -822,7 +815,7 @@ bool PatternManager::PatternCopyBar(std::string patternName, uint16_t srcBarId, 
 			if (it->_patternData->patternName == patternName)
 			{
 				updated = (it->CopyBar(srcBarId, destBarId));
-				it->_patternData->patternLastStepId = (it->getTotalSteps () - 1);
+				it->_patternData->patternLastStepId = it->getTotalSteps ();
 				UpdateUndoList (patternName, PatternDataUpdateReasonType::PatternDataUpdateReason_CopyBar);
 				break;
 			}
@@ -844,7 +837,7 @@ bool PatternManager::PatternAddBar(std::string patternName, bool CopyAndCreate, 
 				{
 					status = it->AddBar (CopyAndCreate, FromBarId);
 				}
-				it->_patternData->patternLastStepId = (it->getTotalSteps () - 1);
+				it->_patternData->patternLastStepId = it->getTotalSteps ();
 
 				for (auto& listener : _patternListeners)
 				{
@@ -868,7 +861,7 @@ bool PatternManager::patternInsertBar(std::string patternName, uint16_t postion)
 			if (it->_patternData->patternName == patternName)
 			{
 				updated = (it->insertBar (postion));
-				it->_patternData->patternLastStepId = (it->getTotalSteps () - 1);
+				it->_patternData->patternLastStepId = it->getTotalSteps ();
 
 				for (auto& listener : _patternListeners)
 				{
@@ -902,7 +895,7 @@ bool PatternManager::PatternRemoveBar(std::string patternName, uint16_t BarId, u
 				{
 					status = (it->RemoveBar (BarId));
 				}
-				it->_patternData->patternLastStepId = (it->getTotalSteps () - 1);
+				it->_patternData->patternLastStepId = it->getTotalSteps ();
 
 				for (auto& listener : _patternListeners)
 				{
@@ -1413,7 +1406,6 @@ void PatternManager::PatternMngrPowerOnHousekeeping ()
 		}
 		if (SaveFile)
 		{
-			engine.fileHandler->DeletePattern ((*patternIt)._patternData->patternName);
 			engine.fileHandler->Createpattern ((*patternIt)._patternData->patternName, *patternIt->_patternData);
 		}
 	}

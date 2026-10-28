@@ -11,3 +11,10 @@ cmake-build-*/
 
 # Editor settings
 .vscode/
+
+# Local banks and legacy runtime output
+/Source/Application/sf/*.sf2
+/Source/Application/sf/*.SF2
+/Source/Application/Debug/
+/Source/Application/Release/
+__pycache__/

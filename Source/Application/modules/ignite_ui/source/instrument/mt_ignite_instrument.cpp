@@ -1242,7 +1242,7 @@ namespace ui
 
 	void IgniteInstruments::markAsChannelInUse(const String& midiport, int channel)
 	{
-		if (channelUseList.find(midiport) != channelUseList.end() && channel < sizeof(channelUseList[midiport]))
+		if (channelUseList.find(midiport) != channelUseList.end() && channel >= 0 && channel < 16)
 		{
 			channelUseList[midiport][channel] = true;
 		}
@@ -1250,7 +1250,7 @@ namespace ui
 
 	void IgniteInstruments::markAsChannelFree(const String& midiport, int channel)
 	{
-		if (channelUseList.find(midiport) != channelUseList.end() && channel < sizeof(channelUseList[midiport]))
+		if (channelUseList.find(midiport) != channelUseList.end() && channel >= 0 && channel < 16)
 		{
 			channelUseList[midiport][channel] = false;
 		}
@@ -1258,13 +1258,14 @@ namespace ui
 
 	bool IgniteInstruments::isChannelUsed(const String& midiport, int channel)
 	{
-		if (channelUseList.find(midiport) != channelUseList.end() && channel < sizeof(channelUseList[midiport]))
+		if (channelUseList.find(midiport) != channelUseList.end() && channel >= 0 && channel < 16)
 		{
 			if (channelUseList[midiport][channel])
 				return true;
 			else
 				return false;
 		}
+		return false;
 	}
 
 	void IgniteInstruments::addMidiToUseList(const String& midiPort)

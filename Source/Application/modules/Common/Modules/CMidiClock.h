@@ -25,6 +25,7 @@ namespace Ignite
 		void pause ();
 		void start ();
 		void stop ();
+		void shutdownDesktop() { _synctimer->shutdownDesktop(); }
 
 		bool isPlaying ();
 

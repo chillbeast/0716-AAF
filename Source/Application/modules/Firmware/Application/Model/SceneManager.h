@@ -35,6 +35,12 @@ namespace Ignite
 		void ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool SendNotification);
 
 		void manualPlayNewScene (int32_t sceneId);
+		void markSaved()
+		{
+			isUndilistNeedUpdate = false;
+			SetDefaultUndoListData();
+			ClearUndoList();
+		}
 
 	private:
 		IgniteEngine& engine;
@@ -52,9 +58,9 @@ namespace Ignite
 		void setSceneSwing(uint8_t val);
 		void setSceneTempo(float val);
 		void setSceneName(std::string name);
-		void saveScene(CSong& song, Scene& scene);
+		bool saveScene(CSong& song, Scene& scene);
 		void setStartScene(int32_t index);
-		void saveScene(void);
+		bool saveScene(void);
 		void setEndScene(int32_t index);
 		void setSceneAdvanceMode(uint8_t val);
 		void setSceneGbar(int8_t val);

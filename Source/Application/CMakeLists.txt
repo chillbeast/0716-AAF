@@ -8,6 +8,29 @@ include(CPM.cmake)
 # Add or Disable optional components
 option( USE_VALUE_TREE_DEBUGGER "Value Tree Debugger" OFF )
 option( IGNITE_VST_PLUGIN "IGNITE VST Plugin" OFF )
+option( TIMESTAMP "Refresh build timestamp on every build" OFF )
+option( IGNITE_WARNINGS_AS_ERRORS "Treat MSVC release warnings as errors" OFF )
+option( USE_ASAN_IGNITE "Enable AddressSanitizer for the application and tests" OFF )
+function(ignite_enable_sanitizer target)
+    if(USE_ASAN_IGNITE)
+        if(MSVC)
+            target_compile_options(${target} PRIVATE /fsanitize=address /Zi)
+            target_link_options(${target} PRIVATE /INCREMENTAL:NO /DEBUG)
+        else()
+            target_compile_options(${target} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+            target_link_options(${target} PRIVATE -fsanitize=address)
+        endif()
+    endif()
+endfunction()
+if(CMAKE_CROSSCOMPILING)
+    set(IGNITE_TESTS_DEFAULT OFF)
+else()
+    set(IGNITE_TESTS_DEFAULT ON)
+endif()
+option( IGNITE_DESKTOP_TESTS "Build desktop audio and SoundFont regression checks" ${IGNITE_TESTS_DEFAULT} )
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 #Compile commands, useful for some IDEs like VS-Code
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
@@ -76,7 +99,9 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR
     #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unknown-pragmas")
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /WX")
+    if(IGNITE_WARNINGS_AS_ERRORS)
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /WX")
+    endif()
 endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
@@ -84,7 +109,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set(PATCH_FLAG_FILE "${CMAKE_BINARY_DIR}/juce_patch_applied.flag")
+
 
 # Fetch JUCE from respective git repositories...
 # IF you want to instead point it to a local version, you can invoke CMake with  -DCPM_JUCE_SOURCE="Path_To_JUCE_git_repo"
@@ -96,32 +121,31 @@ CPMAddPackage(
 )
 
 if(JUCE_ADDED)
-    message(STATUS "Downloaded JUCE repository into \"${JUCE_SOURCE_DIR}\"")
-    add_subdirectory(${JUCE_SOURCE_DIR} ./cmake_build_juce)
-
-    # Check if patch is already applied
-    if(NOT EXISTS ${PATCH_FLAG_FILE})
-	    # Apply patch to JUCE
-	    execute_process(
-		    COMMAND git apply ${CMAKE_SOURCE_DIR}/patch/juce_multitouch.patch
-		    WORKING_DIRECTORY ${JUCE_SOURCE_DIR}
-		    RESULT_VARIABLE patch_result
-		    )
-	    if(patch_result)
-		    message(FATAL_ERROR "Failed to apply patch to JUCE: ${patch_result}")
-	    else()
-		    message(STATUS "Patch applied successfully to JUCE.")
-		    file(WRITE ${PATCH_FLAG_FILE} "JUCE patch applied")
-	    endif()
-    else()
-	    message(STATUS "Patch already applied to JUCE. Skipping patch step.")
+    find_package(Git REQUIRED)
+    set(JUCE_PATCH "${CMAKE_SOURCE_DIR}/patch/juce_multitouch.patch")
+    execute_process(COMMAND "${GIT_EXECUTABLE}" apply --reverse --check "${JUCE_PATCH}"
+        WORKING_DIRECTORY "${JUCE_SOURCE_DIR}" RESULT_VARIABLE patch_present
+        OUTPUT_QUIET ERROR_QUIET)
+    if(NOT patch_present EQUAL 0)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" apply "${JUCE_PATCH}"
+            WORKING_DIRECTORY "${JUCE_SOURCE_DIR}" RESULT_VARIABLE patch_result)
+        if(NOT patch_result EQUAL 0)
+            message(FATAL_ERROR "Failed to apply the IGNITE JUCE patch: ${patch_result}")
+        endif()
     endif()
+    add_subdirectory("${JUCE_SOURCE_DIR}" ./cmake_build_juce)
 endif()
 
 # Add JUCE directory...
-add_subdirectory(timestamp)
+if(TIMESTAMP)
+    add_subdirectory(timestamp)
+endif()
 add_subdirectory(modules)
 add_subdirectory(apps)
+if(IGNITE_DESKTOP_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 # Add CPack support
 set(CPACK_GENERATOR "7Z")

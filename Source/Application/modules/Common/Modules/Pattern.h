@@ -35,8 +35,8 @@ namespace Ignite
 		explicit Pattern (int32_t id, std::string name, uint8_t direction, TimeBase time, uint8_t bars, bool isWithData, PatternManager* patternMgr);
 		Pattern (PatternData& patternData, std::list<BarData> *barList, std::list<std::list<StepData>> *StepDataList, PatternManager* patternMgr);
 		Pattern (const Pattern&);
-		Pattern& operator= (const Pattern&) = default;
-		~Pattern () = default;
+		Pattern& operator= (const Pattern&);
+		~Pattern ();
 		void UpdatePattern(PatternData& patternData, std::list<BarData>* barList, std::list<std::list<StepData>>* StepDataList);
 
 		void setTimeBase (TimeBase val);
@@ -81,8 +81,8 @@ namespace Ignite
 		std::string PatternGetDispName (void);
 		void clearPattern (void);
 
-		Step* editStep;
-		Step* playStep;
+		Step* editStep = nullptr;
+		Step* playStep = nullptr;
 		PatternData* _patternData;
 		bool PatternGetBarDataList (ClientPatternData* clientPatternData);
 		std::list<ClienPatterntBarData> PatternGetBarData ();
@@ -90,6 +90,7 @@ namespace Ignite
 		PatternManager* _patternManager = nullptr;
 
 	private:
+		void rebindChildren();
 		std::string name;
 		uint8_t editStepId;
 		uint8_t playStepId;

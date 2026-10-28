@@ -154,7 +154,7 @@ namespace Ignite
 	public:
 		explicit Track (int8_t id, std::string name, bool mute, SongManager* songmgr);
 		Track (const Track&);
-		Track& operator= (const Track&) = default;
+		Track& operator= (const Track&) = delete;
 		~Track ();
 
 		void setTrackRxInstrument (Instrument* val);
@@ -180,6 +180,8 @@ namespace Ignite
 		Pattern* getTrackMainPattern (void);
 		int8_t getTrackId (void);
 		void pulse(int16_t sceneBarId, int16_t sceneStepId);
+		void unloadDesktopSoundFont();
+		void prepareDesktopMonitor();
 
 		bool getRxInstrumentData (void);
 		bool getTxInstrumentData (void);
@@ -359,6 +361,7 @@ namespace Ignite
 		void stopPlayingNotes (void);
 
 		TrackData* _trackData;
+		std::atomic<uint64_t> completedPulses{0};
 		SongManager* _songManager = nullptr;
 
 		Instrument* SavedInstrument;
@@ -415,6 +418,7 @@ namespace Ignite
 		std::unordered_map <uint8_t, uint8_t> _playingNoteList;
 
 		void* _trackSf = nullptr;
+		bool desktopPresetValid = true;
 		AudioDataType _twentyMsBuffer[INTERNAL_AUDIO_20MS_BLOCK_SIZE] = { 0 };
 		juce::AudioBuffer<float> audioBuff;
 

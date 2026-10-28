@@ -1,4 +1,6 @@
 #include <fstream>
+#include "SafeFileIO.h"
+#include "SavedDataValidation.h"
 #include <filesystem>
 #include <vector>
 
@@ -7,8 +9,10 @@ namespace fs = std::filesystem;
 
 //std::string PATH_TO_ROOT_FD = "/root_path";
 #ifdef _WIN64
-std::string PATH_TO_ROOT_FD = "C:/Ignite_Files";
-std::string PATH_TO_CALIB_ROOT_FD = "C:/calibration";
+std::string PATH_TO_ROOT_FD = juce::SystemStats::getEnvironmentVariable("IGNITE_DATA_DIR",
+	juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+		.getChildFile("BehringerIgnite").getFullPathName()).toStdString();
+std::string PATH_TO_CALIB_ROOT_FD = (fs::path(PATH_TO_ROOT_FD) / "calibration").string();
 #elif __APPLE__
 std::string PATH_TO_ROOT_FD = "/tmp/Ignite_Files";
 std::string PATH_TO_CALIB_ROOT_FD = "/tmp/calibration";
@@ -67,9 +71,37 @@ Array <CalibrationData> newCalibData;
 
 EngineFileHandler::EngineFileHandler(IgniteEngine& model) :engine(model)
 {
-	exists(root_path) ? 0 : fs::create_directory(root_path);
+	exists(root_path) ? 0 : fs::create_directories(root_path);
+#ifdef _WIN32
+    for (const auto& recovery : {root_path/".restore-save",root_path/".desktop-restore"})
+    {
+        const auto previous=recovery/"backups"/root_work_path.filename();
+        if (!fs::exists(root_work_path) && fs::is_directory(previous)) fs::rename(previous,root_work_path);
+    }
+#endif
 	exists(root_work_path) ? 0 : fs::create_directory(root_work_path);
 	exists(songs_path) ? 0 : fs::create_directory(songs_path);
+    for (const auto& library : {std::make_pair(songs_path, root_work_path / ".song-save"),
+                                std::make_pair(patterns_path, root_work_path / ".pattern-save")})
+    {
+        fs::create_directories(library.first);
+        const auto recovery = library.second / "backups";
+        if (fs::exists(recovery))
+            for (const auto& entry : fs::directory_iterator(recovery))
+                if (entry.is_directory() && !fs::exists(library.first / entry.path().filename()))
+                    fs::rename(entry.path(), library.first / entry.path().filename());
+    }
+    const auto sceneRecovery = root_work_path / ".scene-save";
+    if (fs::exists(sceneRecovery))
+        for (const auto& song : fs::directory_iterator(sceneRecovery))
+        {
+            const auto target = songs_path / song.path().filename();
+            const auto backups = song.path() / "backups";
+            if (fs::is_directory(target) && fs::is_directory(backups))
+                for (const auto& scene : fs::directory_iterator(backups))
+                    if (scene.is_directory() && !fs::exists(target / scene.path().filename()))
+                        fs::rename(scene.path(), target / scene.path().filename());
+        }
 	exists(instruments_path) ? 0 : fs::create_directory(instruments_path);
 	exists(patterns_path) ? 0 : fs::create_directory(patterns_path);
 	exists(settings_path) ? 0 : fs::create_directory(settings_path);
@@ -85,7 +117,7 @@ EngineFileHandler::EngineFileHandler(IgniteEngine& model) :engine(model)
 	{
 		mountDataPart(false);
 		fs::create_directory(calib_root_path);
-		engine.fileHandler->UpdateCalibData(&newCalibData);
+		UpdateCalibData(&newCalibData);
 		mountDataPart(true);
 	}
 	GetSystemStatus();//Read and update the data
@@ -191,8 +223,69 @@ std::string EngineFileHandler::getBackUPPathFromId(uint8_t DataFolderId)
 	}
 	return (backupPath.string());
 }
+#ifdef _WIN32
+static std::vector<std::string> desktopBackupLibraries(uint8_t folder)
+{
+    switch (EngineDataFolderId(folder))
+    {
+        case EngineDataFolderId::AllDataInternalStorage: case EngineDataFolderId::AllDataExternalStorage:
+            return {SONG_FOLDER_NAME, INSTRUMENTS_FOLDER_NAME, PATTERNS_FOLDER_NAME, SETTINGS_FOLDER_NAME};
+        case EngineDataFolderId::SongsInternalStorage: case EngineDataFolderId::SongsExternalStorage: return {SONG_FOLDER_NAME};
+        case EngineDataFolderId::PatternInternalStorage: case EngineDataFolderId::PatternExternalStorage: return {PATTERNS_FOLDER_NAME};
+        case EngineDataFolderId::InstrumentInternalStorage: case EngineDataFolderId::InstrumentExternalStorage: return {INSTRUMENTS_FOLDER_NAME};
+        case EngineDataFolderId::SettingsInternalStorage: case EngineDataFolderId::SettingsExternalStorage: return {SETTINGS_FOLDER_NAME};
+        default: return {};
+    }
+}
+static bool desktopCopyBackup(const fs::path& source, const fs::path& destination,
+                              const std::vector<std::string>& libraries, bool restoring)
+{
+    if (libraries.empty() || !fs::is_directory(source)) return false;
+    for (const auto& name : libraries)
+    {
+        const auto folder=source/name;
+        if (!fs::is_directory(folder)) return false;
+        for (const auto& entry : fs::recursive_directory_iterator(folder))
+        {
+            if (entry.is_symlink()) return false;
+            if (restoring && entry.is_regular_file() && entry.path().extension()==FILE_FORMAT &&
+                !validSavedXml(juce::File(juce::String(entry.path().u8string())))) return false;
+        }
+    }
+    if (restoring && libraries.size()==4 && fs::exists(source/(INFO_FILE_NAME+FILE_FORMAT)) &&
+        !validSavedXml(juce::File(juce::String((source/(INFO_FILE_NAME+FILE_FORMAT)).u8string())))) return false;
+    const auto recovery=destination.parent_path()/(restoring ? ".restore-save" : ".backup-save");
+    return SafeFileIO::writeDirectory(destination,recovery,[&](const fs::path& pending)
+    {
+        if (fs::is_directory(destination))
+            for (const auto& entry : fs::directory_iterator(destination))
+                fs::copy(entry.path(),pending/entry.path().filename(),fs::copy_options::recursive);
+        for (const auto& name : libraries)
+        {
+            fs::remove_all(pending/name);
+            fs::copy(source/name,pending/name,fs::copy_options::recursive);
+        }
+        if (libraries.size()==4 && fs::exists(source/(INFO_FILE_NAME+FILE_FORMAT)))
+            fs::copy_file(source/(INFO_FILE_NAME+FILE_FORMAT),pending/(INFO_FILE_NAME+FILE_FORMAT),fs::copy_options::overwrite_existing);
+        if (restoring)
+        {
+            if (std::find(libraries.begin(),libraries.end(),SONG_FOLDER_NAME)!=libraries.end())
+            { fs::remove_all(pending/".song-save");fs::remove_all(pending/".scene-save"); }
+            if (std::find(libraries.begin(),libraries.end(),PATTERNS_FOLDER_NAME)!=libraries.end()) fs::remove_all(pending/".pattern-save");
+        }
+        return true;
+    });
+}
+#endif
+
 bool EngineFileHandler::CreateBackUP(uint8_t DataFolderId)
 {
+#ifdef _WIN32
+    auto lock=engine.lockDesktopState();
+    try { return desktopCopyBackup(root_work_path,fs::path(getBackUPPathFromId(DataFolderId)),desktopBackupLibraries(DataFolderId),false); }
+    catch (...) { return false; }
+#else
+
 	bool ret = true;
 	fs::path backupPath = getBackUPPathFromId(DataFolderId);
 
@@ -253,10 +346,17 @@ bool EngineFileHandler::CreateBackUP(uint8_t DataFolderId)
 		DBG(String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "WARN FolderId out of range/Path invalid " + String(DataFolderId));
 	}
 	return ret;
+#endif
 }
 
 bool EngineFileHandler::RestoreBackUP(uint8_t DataFolderId)
 {
+#ifdef _WIN32
+    auto lock=engine.lockDesktopState();
+    try { return desktopCopyBackup(fs::path(getBackUPPathFromId(DataFolderId)),root_work_path,desktopBackupLibraries(DataFolderId),true); }
+    catch (...) { return false; }
+#else
+
 	bool ret = true;
 	fs::path backupPath = getBackUPPathFromId(DataFolderId);
 
@@ -338,6 +438,7 @@ bool EngineFileHandler::RestoreBackUP(uint8_t DataFolderId)
 		DBG(String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "WARN FolderId out of range/Path invalid " + String(DataFolderId));
 	}
 	return ret;
+#endif
 }
 
 //Add multiple params/struct if required in future, update the argument list as required
@@ -407,35 +508,43 @@ int32_t EngineFileHandler::getMainInfo(mainInfoData& info)
 
 FileHandlerError EngineFileHandler::CreateSong(SongData songData)
 {
-	FileHandlerError ret = FILE_ERROR;
-	//Note delete the song folder 1st, if re-creating the song again with update
-	if (fs::create_directory(songs_path / songData.songName))
-	{
-		ret = UpdateSongInfo(songData);
-		if (ret)
-		{
-			if (!songData.sceneList.empty())
-			{
-				for (auto it = songData.sceneList.begin(); it != songData.sceneList.end(); ++it)
-				{
-					if (it->_sceneData != nullptr)
-					{
-						CreateScene(songData.songName, *(it->_sceneData));
-					}
-					else
-						break;
-				}
-			}
-		}
-	}
-	return ret;
+    if (!SafeFileIO::isLeafName(songData.songName)) return FILE_ERROR;
+    const bool saved = SafeFileIO::writeDirectory(songs_path / songData.songName, root_work_path / ".song-save",
+        [&](const fs::path& pending)
+        {
+            const auto previous = songs_path / songData.songName;
+            if (fs::exists(previous))
+                for (const auto& entry : fs::directory_iterator(previous))
+                    if (entry.is_regular_file()) fs::copy_file(entry.path(), pending / entry.path().filename());
+            if (writeSongInfo(pending, songData) != FILE_OK) return false;
+            for (const auto& scene : songData.sceneList)
+                if (!SafeFileIO::isLeafName(scene._sceneData->sceneName) ||
+                    writeScene(pending / scene._sceneData->sceneName, *scene._sceneData) != FILE_OK) return false;
+            return true;
+        });
+    if (!saved) juce::Logger::writeToLog("Song save failed; previous data retained: " + juce::String(songData.songName));
+    else
+    {
+        std::error_code ignored;
+        fs::remove_all(root_work_path / ".scene-save" / songData.songName, ignored);
+    }
+    return saved ? FILE_OK : FILE_ERROR;
 }
 FileHandlerError EngineFileHandler::DeleteSong(std::string SongName)
 {
-	return ((fs::remove_all(songs_path / SongName)) ? FILE_OK : FILE_ERROR);
+    if (!SafeFileIO::isLeafName(SongName)) return FILE_ERROR;
+    std::error_code error;
+    fs::remove_all(root_work_path / ".scene-save" / SongName, error);
+    if (error) return FILE_ERROR;
+    fs::remove_all(root_work_path / ".song-save" / "backups" / SongName, error);
+    if (error) return FILE_ERROR;
+    const auto removed = fs::remove_all(songs_path / SongName, error);
+    return !error && removed ? FILE_OK : FILE_ERROR;
 }
 FileHandlerError EngineFileHandler::DeleteAllSongs()
 {
+    fs::remove_all(root_work_path / ".scene-save");
+	fs::remove_all(root_work_path / ".song-save");
 	FileHandlerError ret = (fs::remove_all(songs_path)) ? FILE_OK : FILE_ERROR;
 	exists(songs_path) ? 0 : fs::create_directory(songs_path);
 	return ret;
@@ -443,11 +552,12 @@ FileHandlerError EngineFileHandler::DeleteAllSongs()
 
 FileHandlerError EngineFileHandler::UpdateSongInfo(SongData& songData)
 {
-	if (exists(songs_path / songData.songName))
+    return writeSongInfo(songs_path / songData.songName, songData);
+}
+FileHandlerError EngineFileHandler::writeSongInfo(const fs::path& folder, const SongData& songData)
+{
+	if (exists(folder))
 	{
-		std::ofstream infofile(songs_path / songData.songName / (INFO_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
 
 		XmlElement DataXml("Song_Info");
 		XmlElement* DataInfo = new XmlElement("Info");
@@ -461,10 +571,7 @@ FileHandlerError EngineFileHandler::UpdateSongInfo(SongData& songData)
 		DataInfo->setAttribute("applySongTempoToScenes", songData.applySongTempoToScenes);
 		DataInfo->setAttribute("applySongSwingToScenes", songData.applySongSwingToScenes);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.flush();
-		infofile.close();
-		return FILE_OK;
+		return SafeFileIO::writeFile(folder / (INFO_FILE_NAME + FILE_FORMAT), [&](std::ostream& output) { output << DataXml.toString(); }) ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -570,37 +677,28 @@ std::vector<std::string> EngineFileHandler::GetSongNameList(uint16_t StartPos, u
 
 FileHandlerError EngineFileHandler::CreateScene(std::string SongName, SceneData sceneData)
 {
-	FileHandlerError ret = FILE_ERROR;
-	std::vector<TrackData> TrackDataList;
-
-	if (exists(songs_path / SongName) && !exists(songs_path / SongName / sceneData.sceneName))
-	{
-		ret = (fs::create_directory(songs_path / SongName / sceneData.sceneName) ? FILE_OK : FILE_ERROR);
-		if (ret == FILE_OK)
-		{
-			ret = UpdateSceneInfo(SongName, sceneData);
-			if (ret == FILE_OK && (!sceneData.trackList.empty()))
-			{
-				for (auto it = sceneData.trackList.begin(); it != sceneData.trackList.end(); ++it)
-				{
-					if (it->_trackData != nullptr)
-					{
-						TrackDataList.push_back(*(it->_trackData));
-					}
-					else
-						break;
-				}
-				CreateTracksWithList(SongName, sceneData.sceneName, TrackDataList);
-			}
-		}
-		return FILE_OK;
-	}
-	else
-		return FILE_EXISTS;
+    if (!SafeFileIO::isLeafName(SongName) || !SafeFileIO::isLeafName(sceneData.sceneName) ||
+        !fs::is_directory(songs_path / SongName)) return FILE_ERROR;
+    const bool saved = SafeFileIO::writeDirectory(songs_path / SongName / sceneData.sceneName,
+        root_work_path / ".scene-save" / SongName,
+        [&](const fs::path& pending) { return writeScene(pending, sceneData) == FILE_OK; });
+    if (!saved) juce::Logger::writeToLog("Scene save failed; previous data retained: " + juce::String(sceneData.sceneName));
+    return saved ? FILE_OK : FILE_ERROR;
+}
+FileHandlerError EngineFileHandler::writeScene(const fs::path& folder, const SceneData& sceneData)
+{
+    if (!fs::exists(folder)) fs::create_directory(folder);
+    else if (!fs::is_empty(folder)) return FILE_ERROR;
+    if (writeSceneInfo(folder, sceneData) != FILE_OK) return FILE_ERROR;
+    std::vector<TrackData> tracks;
+    for (const auto& track : sceneData.trackList) tracks.push_back(*track._trackData);
+    return writeTracks(folder, tracks);
 }
 
 FileHandlerError EngineFileHandler::DeleteScene(std::string SongName, std::string SceneName)
 {
+    if (!SafeFileIO::isLeafName(SongName) || !SafeFileIO::isLeafName(SceneName)) return FILE_ERROR;
+    fs::remove_all(root_work_path / ".scene-save" / SongName / "backups" / SceneName);
 	if (exists(songs_path / SongName))
 		return (fs::remove_all(songs_path / SongName / SceneName) ? FILE_OK : FILE_ERROR);
 	else
@@ -609,11 +707,12 @@ FileHandlerError EngineFileHandler::DeleteScene(std::string SongName, std::strin
 
 FileHandlerError EngineFileHandler::UpdateSceneInfo(std::string SongName, SceneData sceneData)
 {
-	if (exists(songs_path / SongName / sceneData.sceneName))
+    return writeSceneInfo(songs_path / SongName / sceneData.sceneName, sceneData);
+}
+FileHandlerError EngineFileHandler::writeSceneInfo(const fs::path& folder, const SceneData& sceneData)
+{
+	if (exists(folder))
 	{
-		std::ofstream infofile(songs_path / SongName / sceneData.sceneName / (INFO_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
 
 		XmlElement DataXml("SceneInfo");
 		XmlElement* DataInfo = new XmlElement("Info");
@@ -631,10 +730,7 @@ FileHandlerError EngineFileHandler::UpdateSceneInfo(std::string SongName, SceneD
 		DataInfo->setAttribute("trackMuteStatus", (int)sceneData.trackMuteStatus);
 		DataInfo->setAttribute("sceneTempo", (std::round(sceneData.sceneTempo * 10.0) / 10.0));
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.flush();
-		infofile.close();
-		return FILE_OK;
+		return SafeFileIO::writeFile(folder / (INFO_FILE_NAME + FILE_FORMAT), [&](std::ostream& output) { output << DataXml.toString(); }) ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -741,14 +837,15 @@ std::vector<std::string> EngineFileHandler::GetSceneList(std::string SongName, u
 
 FileHandlerError EngineFileHandler::CreateTracksWithList(std::string SongName, std::string SceneName, std::vector<TrackData> TrackDataList)
 {
+    return writeTracks(songs_path / SongName / SceneName, TrackDataList);
+}
+FileHandlerError EngineFileHandler::writeTracks(const fs::path& folder, const std::vector<TrackData>& TrackDataList)
+{
 	FileHandlerError ret = FILE_EXISTS;
 
-	if (exists(songs_path / SongName / SceneName))
+	if (exists(folder))
 	{
-		std::ofstream infofile(songs_path / SongName / SceneName / ("TrackV1" + FILE_FORMAT), std::ofstream::binary);
 
-		if (!infofile)
-			return FILE_ERROR;
 
 		XmlElement DataXml("Track");
 		for (auto TrackData : TrackDataList)
@@ -797,10 +894,7 @@ FileHandlerError EngineFileHandler::CreateTracksWithList(std::string SongName, s
 			}
 			DataXml.addChildElement(DataInfo);
 		}
-		infofile << DataXml.toString();
-		infofile.flush();
-		infofile.close();
-		ret = FILE_OK;
+		return SafeFileIO::writeFile(folder / ("TrackV1" + FILE_FORMAT), [&](std::ostream& output) { output << DataXml.toString(); }) ? FILE_OK : FILE_ERROR;
 	}
 	return ret;
 }
@@ -960,13 +1054,17 @@ std::vector<std::string> EngineFileHandler::GetTrackList(std::string SongName, s
 
 FileHandlerError EngineFileHandler::Createpattern(std::string PatternName, PatternData patternData)
 {
-	if (!exists(patterns_path))
-		return FILE_ERROR;
-	fs::remove_all(patterns_path / PatternName);
-
-	if (fs::create_directory(patterns_path / PatternName))
+    if (!SafeFileIO::isLeafName(PatternName)) return FILE_ERROR;
+    const bool saved = SafeFileIO::writeDirectory(patterns_path / PatternName, root_work_path / ".pattern-save",
+        [&](const fs::path& pending) { return writePattern(pending, patternData) == FILE_OK; });
+    if (!saved) juce::Logger::writeToLog("Pattern save failed; previous data retained: " + juce::String(PatternName));
+    return saved ? FILE_OK : FILE_ERROR;
+}
+FileHandlerError EngineFileHandler::writePattern(const fs::path& folder, const PatternData& patternData)
+{
+	if (fs::exists(folder))
 	{
-		std::ofstream infofile(patterns_path / PatternName / (INFO_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
+		std::ofstream infofile(folder / (INFO_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
 		if (!infofile)
 			return FILE_ERROR;
 
@@ -1000,16 +1098,17 @@ FileHandlerError EngineFileHandler::Createpattern(std::string PatternName, Patte
 		infofile << DataPatternXml.toString();
 		infofile.flush();
 		infofile.close();
+                    if (!infofile) return FILE_ERROR;
 
 		if (patternData.numBars && !patternData.barList.empty())
 		{
 			for (auto& barIt : patternData.barList)
 			{
 				std::string barFD = ("BAR-" + std::to_string(barIt.second._BarData->BarId));
-				if (!fs::create_directory(patterns_path / PatternName / barFD))
+				if (!fs::create_directory(folder / barFD))
 					return FILE_ERROR;
 
-				std::ofstream barInfofile(patterns_path / PatternName / barFD / (INFO_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
+				std::ofstream barInfofile(folder / barFD / (INFO_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
 				if (!barInfofile)
 					return FILE_ERROR;
 
@@ -1026,11 +1125,12 @@ FileHandlerError EngineFileHandler::Createpattern(std::string PatternName, Patte
 				barInfofile << DataBarXml.toString();
 				barInfofile.flush();
 				barInfofile.close();
+                    if (!barInfofile) return FILE_ERROR;
 
 				if (barIt.second._BarData->stepCount && !barIt.second._BarData->stepList.empty())
 				{
 					std::string stepName = ("step" + FILE_FORMAT);
-					std::ofstream stepfile(patterns_path / PatternName / barFD / stepName, std::ofstream::binary);
+					std::ofstream stepfile(folder / barFD / stepName, std::ofstream::binary);
 					if (!stepfile)
 						return FILE_ERROR;
 
@@ -1087,6 +1187,7 @@ FileHandlerError EngineFileHandler::Createpattern(std::string PatternName, Patte
 					stepfile << DataStepXml.toString();
 					stepfile.flush();
 					stepfile.close();
+                    if (!stepfile) return FILE_ERROR;
 				}
 			}
 		}
@@ -1413,12 +1514,15 @@ FileHandlerError EngineFileHandler::RenamePattern(std::string PatternName, std::
 
 FileHandlerError EngineFileHandler::DeletePattern(std::string PatternName)
 {
-	return ((fs::remove_all(patterns_path / PatternName)) ? FILE_OK : FILE_ERROR);
+    if (!SafeFileIO::isLeafName(PatternName)) return FILE_ERROR;
+    fs::remove_all(root_work_path / ".pattern-save" / "backups" / PatternName);
+    return ((fs::remove_all(patterns_path / PatternName)) ? FILE_OK : FILE_ERROR);
 }
 
 FileHandlerError EngineFileHandler::DeleteAllPattern()
 {
-	FileHandlerError ret = (fs::remove_all(patterns_path)) ? FILE_OK : FILE_ERROR;
+    fs::remove_all(root_work_path / ".pattern-save");
+    FileHandlerError ret = (fs::remove_all(patterns_path)) ? FILE_OK : FILE_ERROR;
 	exists(patterns_path) ? 0 : fs::create_directory(patterns_path);
 	return ret;
 }
@@ -1428,9 +1532,7 @@ FileHandlerError EngineFileHandler::saveInstrument(std::string InstrumentName, I
 	if (!exists(instruments_path))
 		return FILE_ERROR;
 
-	std::ofstream infofile(instruments_path / (instrumentData.instrumentName + FILE_FORMAT), std::ofstream::binary);
-	if (!infofile)
-		return FILE_ERROR;
+    if (!SafeFileIO::isLeafName(instrumentData.instrumentName)) return FILE_ERROR;
 
 	XmlElement DataXml("Instrument");
 	XmlElement* DataInfo = new XmlElement("Data");
@@ -1503,10 +1605,8 @@ FileHandlerError EngineFileHandler::saveInstrument(std::string InstrumentName, I
 		}
 	}
 	DataXml.addChildElement(DataInfo);
-	infofile << DataXml.toString();
-	infofile.flush();
-	infofile.close();
-	return FILE_OK;
+    return SafeFileIO::writeFile(instruments_path / (instrumentData.instrumentName + FILE_FORMAT),
+        [&](std::ostream& output) { output << DataXml.toString(); }) ? FILE_OK : FILE_ERROR;
 }
 
 InstrumentData EngineFileHandler::GetInstrumentData(std::string InstrumentName)

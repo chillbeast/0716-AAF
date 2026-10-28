@@ -1,4 +1,5 @@
 #include "CMidiClock.h"
+#include "Firmware/Application/Model/IgniteEngine.h"
 using namespace Ignite;
 
 CMidiClock::CMidiClock ()
@@ -14,6 +15,8 @@ CMidiClock::CMidiClock ()
 
 void inline CMidiClock::syncTimerCb (void)
 {
+	auto stateLock = _engine ? _engine->lockDesktopState() : std::unique_lock<std::recursive_mutex>{};
+	if (!_playing || _engine == nullptr) return;
 	//call songmanager tick()
 	_engine->get_SongManager()->pulse(_pulse);
 	_pulse++;
@@ -30,6 +33,7 @@ void CMidiClock::initialize (IgniteEngine* eng)
 
 void CMidiClock::setTempo (float bpm)
 {
+	auto stateLock = _engine ? _engine->lockDesktopState() : std::unique_lock<std::recursive_mutex>{};
 	if (bpm == _tempo)
 	{
 		return;
@@ -52,6 +56,7 @@ void CMidiClock::setTempo (float bpm)
 
 void CMidiClock::pause ()
 {
+	auto stateLock = _engine ? _engine->lockDesktopState() : std::unique_lock<std::recursive_mutex>{};
 	_pause = true;
 	_playing = false;
 	_synctimer->stop ();
@@ -59,6 +64,7 @@ void CMidiClock::pause ()
 
 void CMidiClock::start ()
 {
+	auto stateLock = _engine ? _engine->lockDesktopState() : std::unique_lock<std::recursive_mutex>{};
 	_pause = false;
 	_playing = true;
 	_synctimer->start (_timerIntervalUs);
@@ -66,6 +72,7 @@ void CMidiClock::start ()
 
 void CMidiClock::stop ()
 {
+	auto stateLock = _engine ? _engine->lockDesktopState() : std::unique_lock<std::recursive_mutex>{};
 	_pause = false;
 	_playing = false;
 	_synctimer->stop ();
@@ -74,10 +81,12 @@ void CMidiClock::stop ()
 
 bool CMidiClock::isPlaying()
 {
+	auto stateLock = _engine ? _engine->lockDesktopState() : std::unique_lock<std::recursive_mutex>{};
 	return _playing;
 }
 
 float CMidiClock::getTempo()
 {
+	auto stateLock = _engine ? _engine->lockDesktopState() : std::unique_lock<std::recursive_mutex>{};
 	return _tempo;
 }

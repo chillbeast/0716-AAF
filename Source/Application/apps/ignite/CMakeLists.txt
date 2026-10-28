@@ -109,6 +109,7 @@ target_link_libraries(${TargetName}
 #juce_audio_formats - enable only for testing with sample file, reffer SongManager.cpp
         #juce::juce_audio_formats
         juce::juce_audio_devices
+        juce::juce_audio_utils
         juce::juce_dsp
         common_defs
         common_ui_controls
@@ -122,18 +123,7 @@ if(TIMESTAMP)
     target_link_libraries(${TargetName} PRIVATE timestamp)
 endif()
 
-option( USE_ASAN_IGNITE "enable address sanitizer" OFF )
-
-if(USE_ASAN_IGNITE)
-   target_link_libraries(${TargetName} PRIVATE winmm.lib)
-   target_link_libraries(${TargetName} PRIVATE libsancov.lib)
-   target_link_options(${TargetName}  PRIVATE /fsanitize=address)
-   target_compile_options(${TargetName} PRIVATE -fsanitize=address)
-   target_compile_options(${TargetName}  PRIVATE -fsanitize-coverage=inline-8bit-counters)
-   target_compile_options(${TargetName}  PRIVATE /fsanitize=address)
-   target_compile_options(${TargetName}  PRIVATE /Od)
-   set(addressSanitizerEnabled true)
-endif()
+ignite_enable_sanitizer(${TargetName})
 
 ## CPack variables...
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME} )
@@ -157,17 +147,15 @@ install(
 # Copy assets to executable directory post generating build files...
 add_custom_command(TARGET ${PROJECT_NAME}
     POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/../../assets ${CMAKE_CURRENT_BINARY_DIR}/Ignite_artefacts/Debug/assets
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/../../assets ${CMAKE_CURRENT_BINARY_DIR}/Ignite_artefacts/Release/assets
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../../assets" "$<TARGET_FILE_DIR:Ignite>/assets"
 )
 
 # The SoundFont is not part of the open-source release; copy it only if one was supplied.
-set(IGNITE_SOUNDFONT ${CMAKE_CURRENT_SOURCE_DIR}/../../sf/Ignite.sf2)
+set(IGNITE_SOUNDFONT "${CMAKE_CURRENT_SOURCE_DIR}/../../sf/Ignite.sf2" CACHE FILEPATH "Optional SoundFont to copy beside Ignite")
 if(EXISTS ${IGNITE_SOUNDFONT})
     add_custom_command(TARGET ${PROJECT_NAME}
         POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy ${IGNITE_SOUNDFONT} ${CMAKE_CURRENT_BINARY_DIR}/Ignite_artefacts/Debug/Ignite.sf2
-            COMMAND ${CMAKE_COMMAND} -E copy ${IGNITE_SOUNDFONT} ${CMAKE_CURRENT_BINARY_DIR}/Ignite_artefacts/Release/Ignite.sf2
+            COMMAND ${CMAKE_COMMAND} -E copy "${IGNITE_SOUNDFONT}" "$<TARGET_FILE_DIR:Ignite>/Ignite.sf2"
     )
 else()
     message(STATUS "No SoundFont at ${IGNITE_SOUNDFONT}; the app will start without internal sounds.")

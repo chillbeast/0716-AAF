@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <list>
 #include <string>
+#include <memory>
 #include "Common/Modules/Bar.h"
 #include "Common/Modules/Step.h"
 #include "Firmware/Application/Model/ModelParams.h"
@@ -20,7 +21,25 @@ Bar::Bar(Pattern *pat, const Bar& Src)
 	_BarData->direction = Src._BarData->direction;
 	_BarData->stepList = Src._BarData->stepList;
 
-	_pattern = pat;
+	rebindPattern(pat);
+}
+Bar::Bar(const Bar& source) : Bar(source._pattern, source) {}
+Bar::~Bar() { delete _BarData; }
+void Bar::rebindPattern(Pattern* pattern)
+{
+    _pattern = pattern;
+    for (auto& step : _BarData->stepList) step.second.rebindPattern(pattern);
+}
+Bar& Bar::operator=(const Bar& source)
+{
+    if (this != &source)
+    {
+        auto data = std::make_unique<BarData>(*source._BarData);
+        delete _BarData;
+        _BarData = data.release();
+        rebindPattern(source._pattern);
+    }
+    return *this;
 }
 
 Bar::Bar (Pattern *pat, uint16_t BarID, bool BarTransposeDefeat, uint8_t BarRepeatCount, bool gBarSync, PatternDirection direction, std::list<StepData> StepDataList)

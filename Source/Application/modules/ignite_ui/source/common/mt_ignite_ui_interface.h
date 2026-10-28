@@ -18,6 +18,7 @@ namespace Ignite {
 			DBG("WatchdogService Thread has started.");
 			while (!threadShouldExit())
 			{
+				wait(100);
 				if (juce::Time::getCurrentTime().toMilliseconds() - lastMainThreadPing > 5000)
 				{
 					std::cout << "Watchdog not serviced, stop watchdog service" << std::endl;
@@ -44,18 +45,19 @@ namespace Ignite {
 	class UiInterface : public IListener, private juce::Timer, public juce::Thread {
 	public:
 		 UiInterface(IDevice* device);
-		~UiInterface() = default;
+		~UiInterface() override;
 	/*	void publish(moduleId_t module, paramId_t param, const uint8_t value) override;
 		void publish(moduleId_t module, paramId_t param, const uint32_t value) override;
 		void publish(moduleId_t module, paramId_t param, const float value) override;
 		void publish(moduleId_t module, paramId_t param, const std::string& value) override;*/
 		void publish(moduleId_t module, moduleId_t moduleSrc, paramId_t param, const AnyType& value, bool isResponse) override;
 		void publishHandler(moduleId_t module, moduleId_t moduleSrc, paramId_t param, const AnyType& value, bool isResponse);
-		void timerCallback() override {	watchdogThread->pingWatchdogThread(); }
+		void timerCallback() override;
 	private:
 		IDevice* engine = nullptr;
 		CMsgQueue<IgniteMessageParam> enginePublishQ;
 		std::unique_ptr<WatchDogService> watchdogThread;
+		uint32_t lastWatchdogPing = 0;
 		void run() override;
 	};
 }

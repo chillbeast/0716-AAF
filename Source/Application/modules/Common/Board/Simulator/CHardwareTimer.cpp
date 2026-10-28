@@ -1,4 +1,6 @@
-#include "../Board/CHardwareTimer.h"
+#include "../CHardwareTimer.h"
+#include <cstdlib>
+#include <iostream>
 
 #ifdef __linux__
 #include <climits>
@@ -22,10 +24,43 @@ CHardwareTimer::CHardwareTimer(HardwareTimerCb cb, void* context)
 
 CHardwareTimer::~CHardwareTimer()
 {
+#ifdef _WIN32
+    shutdownDesktop();
+#else
     stop();
+#endif
+}
+void CHardwareTimer::shutdownDesktop()
+{
+#ifdef _WIN32
+    {
+        std::lock_guard<std::mutex> lock(_timerMutex);
+        _activeCB = false;
+        _running = false;
+        ++_timerRevision;
+    }
+    _timerChanged.notify_all();
+    if (_thread.joinable()) _thread.join();
+#endif
 }
 bool CHardwareTimer::start(const uint16_t intervalus)
 {
+    if (intervalus == 0) return false;
+#ifdef _WIN32
+    {
+        std::lock_guard<std::mutex> lock(_timerMutex);
+        _intervalus = intervalus;
+        _activeCB = true;
+        ++_timerRevision;
+        if (!_running)
+        {
+            _running = true;
+            _thread = std::thread(&CHardwareTimer::hiResTimerThread, this);
+        }
+    }
+    _timerChanged.notify_all();
+    return true;
+#endif
     _intervalus = intervalus;
 #ifdef __linux__
     struct timespec ts;
@@ -79,15 +114,6 @@ bool CHardwareTimer::start(const uint16_t intervalus)
     //}
     pthread_detach(_thread);
 
-#elif defined  _WIN32
-    if (_running)
-    {
-        _activeCB = true;
-        return false;
-    }
-    // Create and start the timer thread
-    _thread = std::thread(&CHardwareTimer::hiResTimerThread, this);
-    _thread.detach();
 #endif
      _running = true;
     _activeCB = true;
@@ -96,6 +122,15 @@ bool CHardwareTimer::start(const uint16_t intervalus)
 
 bool CHardwareTimer::stop(void)
 {
+#ifdef _WIN32
+    {
+        std::lock_guard<std::mutex> lock(_timerMutex);
+        _activeCB = false;
+        ++_timerRevision;
+    }
+    _timerChanged.notify_all();
+    return true;
+#endif
     if (_running)
     {
     //_running = false; -- not stoping
@@ -109,6 +144,17 @@ bool CHardwareTimer::stop(void)
 
 bool CHardwareTimer::changeInterval(const uint16_t intervalus)
 {
+    if (intervalus == 0) return false;
+#ifdef _WIN32
+    {
+        std::lock_guard<std::mutex> lock(_timerMutex);
+        _intervalus = intervalus;
+        ++_timerRevision;
+    }
+    _timerChanged.notify_all();
+    // Changing tempo while paused must not restart playback.
+    return true;
+#endif
     if (!_running)
     {
         start(intervalus);
@@ -194,57 +240,30 @@ void CHardwareTimer::run(void)
 
 #ifdef _WIN32
 
-void PrintThreadPriority(HANDLE threadHandle)
-{
-    DWORD threadId = GetCurrentThreadId();
-    int priority = GetThreadPriority(threadHandle);
-    if (priority == THREAD_PRIORITY_ERROR_RETURN)
-    {
-        juce::Logger::outputDebugString("Error getting thread priority: " + std::to_string(GetLastError()));
-    }
-    else
-    {
-        juce::Logger::outputDebugString("Current thread ID: " + std::to_string(threadId) + "-Priority " + std::to_string(priority));
-    }
-}
-
+// A steady deadline avoids the original time-critical busy loop and cumulative drift.
+// Callback work runs outside _timerMutex so it can pause or change tempo itself.
 void CHardwareTimer::hiResTimerThread(void)
 {
-    // Set the thread priority high
-    HANDLE currentThread = GetCurrentThread();
-    if (!SetThreadPriority(currentThread, THREAD_PRIORITY_TIME_CRITICAL))
-    {
-        std::cerr << "Error setting thread priority: " << GetLastError() << std::endl;
-    }
-
-    LARGE_INTEGER frequency, start, end;
-    QueryPerformanceFrequency(&frequency);
-
-    double intervalCounts = (_intervalus * frequency.QuadPart) / 1000000.0;
-
-    QueryPerformanceCounter(&start);
-
-    PrintThreadPriority(currentThread);
-
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+    std::unique_lock<std::mutex> lock(_timerMutex);
     while (_running)
     {
-        QueryPerformanceCounter(&end);
-        double elapsedCounts = static_cast<double>(end.QuadPart - start.QuadPart);
-        if (elapsedCounts >= intervalCounts)
+        _timerChanged.wait(lock, [this] { return !_running || _activeCB; });
+        if (!_running) break;
+        const auto revision = _timerRevision;
+        const auto interval = std::chrono::microseconds(_intervalus);
+        auto deadline = std::chrono::steady_clock::now() + interval;
+        while (_running && _activeCB && revision == _timerRevision)
         {
-            //MyFunction();
-            _callback(_context);
-
-            // Calculate the actual elapsed time and adjust intervalCounts
-            QueryPerformanceCounter(&end);
-            double actualElapsedCounts = static_cast<double>(end.QuadPart - start.QuadPart);
-            double deviationCounts = static_cast<double>(actualElapsedCounts - intervalCounts);
-
-            // Adjust intervalCounts for the next cycle
-            intervalCounts = (_intervalus * frequency.QuadPart) / 1000000.0 - deviationCounts;
-
-            // reset start time
-            start = end;
+            if (_timerChanged.wait_until(lock, deadline, [this, revision]
+                { return !_running || !_activeCB || revision != _timerRevision; })) break;
+            lock.unlock();
+            if (_callback != nullptr) _callback(_context);
+            lock.lock();
+            deadline += interval;
+            // Do not burst thousands of old pulses after suspend or a long edit.
+            const auto now = std::chrono::steady_clock::now();
+            if (deadline + std::chrono::milliseconds(100) < now) deadline = now + interval;
         }
     }
 }

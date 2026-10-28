@@ -31,6 +31,10 @@ using namespace Ignite::Midi;
 std::unique_ptr<IListener> _PUiInterface;
 std::unique_ptr<IDevice> _PUiVirtualEngine;
 extern IDevice* EngineInit(void);
+#include "DesktopPanel.h"
+#include "DesktopWorkflowTest.h"
+#include "DesktopServices.h"
+#include "DesktopFeatureTest.h"
 
 //==============================================================================
 #define SHOW_BOOT_IMAGE
@@ -96,6 +100,12 @@ public:
 	//==============================================================================
 	void initialise(const juce::String& commandLine) override
 	{
+		auto logPath = SystemStats::getEnvironmentVariable("IGNITE_LOG", "");
+		if (logPath.isNotEmpty())
+		{
+			fileLogger = std::make_unique<FileLogger>(File(logPath), "IGNITE desktop " + getApplicationVersion(), 0);
+			Logger::setCurrentLogger(fileLogger.get());
+		}
 #if defined SHOW_BOOT_IMAGE
 		int waitCount = ENGINE_READY_WAIT_TIME_SEC;
 #ifdef _WIN64
@@ -110,21 +120,75 @@ public:
 
 		if (engineThread.joinable()) //this block the UI to load
 			engineThread.join();
-		mainWindow.reset(new MainWindow(getApplicationName()));
+		mainWindow.reset(new MainWindow(getApplicationName(), !commandLine.contains("--touchscreen")));
 #ifdef _WIN64
 		showWaitForBootComplete(true);// pop-up exits
 #endif
 #else //SHOW_BOOT_IMAGE
 		std::thread engineThread(UiEngineInterfaceInit);
 		engineThread.join();
-		mainWindow.reset(new MainWindow(getApplicationName()));
+		mainWindow.reset(new MainWindow(getApplicationName(), !commandLine.contains("--touchscreen")));
 #endif//SHOW_BOOT_IMAGE
+#ifdef _WIN32
+        midiRouter = std::make_unique<IgniteDesktop::MidiRouter>(*static_cast<IgniteEngine*>(_PUiVirtualEngine.get()));
+        midiRouter->restore();
+        mainWindow->showDesktopSettings = [this] { openDesktopSettings(); };
+        if (auto* panel = dynamic_cast<DesktopPanel*>(mainWindow->getContentComponent()))
+            panel->showDesktopSettings = [this] { openDesktopSettings(); };
+#endif
+		Logger::writeToLog("Engine ready: " + String(_PUiVirtualEngine && _PUiVirtualEngine->isIDeviceReady() ? "yes" : "no"));
+		if (commandLine.contains("--self-test"))
+			Timer::callAfterDelay(2500, [this] { runDesktopSelfTest(0); });
+		if (commandLine.contains("--workflow-test") || commandLine.contains("--workflow-verify"))
+			Timer::callAfterDelay(2500, [this, commandLine]
+			{
+				const auto failures = DesktopWorkflowTest::run(*static_cast<IgniteEngine*>(_PUiVirtualEngine.get()), commandLine.contains("--workflow-verify"), commandLine.contains("--node-edit"), commandLine.contains("--audio-device"));
+				setApplicationReturnValue(failures == 0 ? 0 : 1);
+				quit();
+			});
+        if (commandLine.contains("--feature-test") || commandLine.contains("--feature-verify"))
+            Timer::callAfterDelay(2500,[this,commandLine]
+            {
+                auto& engine=*static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+                const bool verify=commandLine.contains("--feature-verify");
+                int failures=verify ? 0 : DesktopWorkflowTest::run(engine,false,true,false);
+                if (!failures) failures+=DesktopFeatureTest::run(engine,*midiRouter,verify);
+                openDesktopSettings();
+                setApplicationReturnValue(failures?1:0);
+                Timer::callAfterDelay(800,[this] {captureSettingsTabs(0);});
+            });
+        if (commandLine.contains("--desktop-settings")) Timer::callAfterDelay(1000,[this] {openDesktopSettings();});
+		auto snapshotPath = SystemStats::getEnvironmentVariable("IGNITE_SNAPSHOT", "");
+		if (snapshotPath.isNotEmpty())
+			Timer::callAfterDelay(2000, [this, snapshotPath]
+			{
+				auto* content = mainWindow->getContentComponent();
+				auto image = content->createComponentSnapshot(content->getLocalBounds());
+				FileOutputStream stream{File(snapshotPath)};
+				if (stream.openedOk())
+				{
+					PNGImageFormat().writeImageToStream(image, stream);
+					Logger::writeToLog("UI snapshot saved: " + snapshotPath);
+				}
+			});
 	}
 
 	void shutdown() override
 	{
+        if (desktopSettings) delete desktopSettings.getComponent();
+        midiRouter.reset();
+#ifdef _WIN32
+		if (_PUiVirtualEngine)
+			static_cast<IgniteEngine*>(_PUiVirtualEngine.get())->shutdownDesktop();
+#endif
 		// Add your application's shutdown code here..
 		mainWindow = nullptr; // (deletes our window)
+		Logger::writeToLog("Shutdown: window closed");
+		_PUiInterface.reset();
+		Logger::writeToLog("Shutdown: UI publisher stopped");
+		_PUiVirtualEngine.release(); // The firmware's _PIgniteEngine owns this instance.
+		Logger::setCurrentLogger(nullptr);
+		fileLogger.reset();
 	}
 
 	//==============================================================================
@@ -152,22 +216,47 @@ public:
 	class MainWindow : public juce::DocumentWindow
 	{
 	public:
-		MainWindow(juce::String name)
+		MainWindow(juce::String name, bool simulator)
 			: DocumentWindow(name,
 				juce::Desktop::getInstance().getDefaultLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId),
 				DocumentWindow::allButtons)
 		{
-			setContentOwned(&ui::getAppHome(), true);
+#if JUCE_WINDOWS || JUCE_MAC
+			if (simulator)
+			{
+				setName("IGNITE Simulator");
+				setContentOwned(new DesktopPanel(), true);
+				setContentComponentSize(1346, 860);
+				setResizable(true, true);
+				setResizeLimits(748, 500, 2244, 1460);
+				centreWithSize(getWidth(), getHeight());
+			}
+			else
+#endif
+			{
+				setContentNonOwned(&ui::getAppHome(), false);
+				setContentComponentSize(ui::layout::screen.getWidth(), ui::layout::screen.getHeight());
+				setResizable(false, false);
+			}
+#if JUCE_WINDOWS || JUCE_MAC
+			setUsingNativeTitleBar(true);
+#else
 			setUsingNativeTitleBar(false);
 			setTitleBarHeight(0);
-			setContentComponentSize(ui::layout::screen.getWidth(), ui::layout::screen.getHeight());
+#endif
 #if (JUCE_IOS || JUCE_ANDROID || JUCE_LINUX || __linux__)
 			setFullScreen(true);
 #endif
-			setResizable(false, false);
 			setVisible(true);
 		}
 
+        std::function<void()> showDesktopSettings;
+        bool keyPressed(const juce::KeyPress& key) override
+        {
+            if (key.getModifiers().isCommandDown() && key.getKeyCode()==',' && showDesktopSettings)
+            { showDesktopSettings(); return true; }
+            return DocumentWindow::keyPressed(key);
+        }
 		void closeButtonPressed() override
 		{
 			// This is called when the user tries to close this window. Here, we'll just
@@ -188,7 +277,96 @@ public:
 	};
 
 private:
+	void runDesktopSelfTest(int stage)
+	{
+		auto check = [this](bool pass, const String& name)
+		{
+			Logger::writeToLog(String(pass ? "PASS: " : "FAIL: ") + name);
+			if (!pass) ++selfTestFailures;
+		};
+		auto* panel = dynamic_cast<DesktopPanel*>(mainWindow->getContentComponent());
+		auto* front = ui::FrountPannel::GetFrountPannelInstance();
+		using P = FrontPannelParam;
+		if (stage == 0)
+		{
+			check(panel && panel->faceplateLoaded(), "simulator faceplate and panel loaded");
+			check(_PUiVirtualEngine->isIDeviceReady(), "firmware engine ready");
+			if (!panel) { setApplicationReturnValue(1); quit(); return; }
+			panel->tap(P::paramKey_SONG);
+		}
+		else if (stage == 1)
+		{
+			check(ui::AppMainmode::getMainModeInstance()->GetActiveTab() == mt::Ignite::tabs::SONG, "hardware SONG button navigates touchscreen");
+			panel->tap(P::paramKey_MENU);
+		}
+		else if (stage == 2)
+		{
+			check(ui::AppMainmode::getMainModeInstance()->GetActiveTab() == mt::Ignite::tabs::MENU, "hardware MENU button navigates touchscreen");
+			panel->tap(P::paramKey_PAGESHIFT);
+		}
+		else if (stage == 3)
+		{
+			check(front->getShiftKeyStatus(), "hardware SHIFT engages");
+			panel->tap(P::paramKey_PAGESHIFT);
+		}
+		else
+		{
+			check(!front->getShiftKeyStatus(), "hardware SHIFT releases");
+			auto* engine = static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+			Track track(0, "Desktop smoke", false, engine->songManager);
+			track.AuditioningTrackInit();
+			track.sfNoteOn(0, 60, 0.8f);
+			float peak = 0;
+			for (int block = 0; block < 10; ++block)
+			{
+				track.sfSynthesizeAudio();
+				for (int i = 0; i < track.audioBuff.getNumSamples(); ++i)
+					peak = std::max(peak, std::abs(track.audioBuff.getSample(0, i)));
+			}
+			check(engine->songManager->get_tsf_instance() == nullptr ? peak == 0 : peak > 0.0001f,
+				"firmware track renders with SoundFont and stays silent without one");
+			Logger::writeToLog("Desktop self-test failures: " + String(selfTestFailures));
+			setApplicationReturnValue(selfTestFailures == 0 ? 0 : 1);
+			quit(); return;
+		}
+		Timer::callAfterDelay(200, [this, stage] { runDesktopSelfTest(stage + 1); });
+	}
+	int selfTestFailures = 0;
+    void captureSettingsTabs(int index)
+    {
+        auto path=SystemStats::getEnvironmentVariable("IGNITE_SETTINGS_SNAPSHOT","");
+        if (!desktopSettings || index>=4 || path.isEmpty()) {quit();return;}
+        if (auto* settings=dynamic_cast<IgniteDesktop::Settings*>(desktopSettings->getContentComponent())) settings->showTab(index);
+        Timer::callAfterDelay(100,[this,index,path]
+        {
+            if (desktopSettings)
+            {
+                auto snapshot=desktopSettings->createComponentSnapshot(desktopSettings->getLocalBounds());
+                auto file=File(path).getSiblingFile(File(path).getFileNameWithoutExtension()+"-"+String(index)+".png");
+                FileOutputStream output(file);
+                if(output.openedOk()) PNGImageFormat().writeImageToStream(snapshot,output);
+            }
+            captureSettingsTabs(index+1);
+        });
+    }
+    void openDesktopSettings()
+    {
+        if (desktopSettings) { desktopSettings->toFront(true); return; }
+        auto* engine = static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+        if (!engine || !engine->songManager->dm || !midiRouter) return;
+        juce::DialogWindow::LaunchOptions options;
+        options.dialogTitle = "IGNITE Desktop Settings";
+        options.content.setOwned(new IgniteDesktop::Settings(*engine,*midiRouter));
+        options.dialogBackgroundColour = juce::Colour(0xff25272b);
+        options.useNativeTitleBar = true;
+        options.resizable = true;
+        options.escapeKeyTriggersCloseButton = true;
+        desktopSettings = options.launchAsync();
+    }
+    std::unique_ptr<IgniteDesktop::MidiRouter> midiRouter;
+    juce::Component::SafePointer<juce::DialogWindow> desktopSettings;
 	std::unique_ptr<MainWindow> mainWindow;
+	std::unique_ptr<FileLogger> fileLogger;
 };
 
 //==============================================================================

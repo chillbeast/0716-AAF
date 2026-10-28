@@ -7,7 +7,7 @@ CThread::CThread (const char* name, uint16_t stacksizebytes, ThreadPriority prio
 
 CThread::~CThread()
 {
-	_thread.join();
+	stopThread();
 }
 
 void* CThread::startThread (ThreadFunction func, void* context)
@@ -15,6 +15,7 @@ void* CThread::startThread (ThreadFunction func, void* context)
 	if (!_started)
 	{
 		_thread = std::thread (func, context);
+		_started = true;
 		// give this thread opportunity to run
 		std::this_thread::sleep_for (std::chrono::milliseconds (10));
 	}

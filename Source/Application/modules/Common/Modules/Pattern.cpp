@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <list>
 #include <string>
+#include <memory>
 #include "Common/Modules/Bar.h"
 #include "Common/Modules/Step.h"
 #include "Firmware/Application/Model/ModelParams.h"
@@ -40,7 +41,7 @@ Pattern::Pattern (int32_t id, std::string pName, uint8_t direction, TimeBase tim
 	_patternData->patternName = pName;
 	_patternData->patternDispName = pName;
 	_patternData->UsedByCount = 0;
-	_patternData->patternLastStepId = (bars * MAX_STEPS_IN_PATTERN_BAR) - 1;
+	_patternData->patternLastStepId = bars * MAX_STEPS_IN_PATTERN_BAR;
 	_patternData->id = id;
 	_patternData->_barLoopOn = false;
 	_patternData->_barLoopStartId = -1;
@@ -56,7 +57,7 @@ Pattern::Pattern (int32_t id, std::string pName, uint8_t direction, TimeBase tim
 		if (isWithData)
 			_patternData->barList.emplace (i, Bar (this, i, false, 0, false, PatternDirection::forward, CreateStepWithRandomdata (_NumOfStepsPerBar, (i * _NumOfStepsPerBar))));
 		else
-			_patternData->barList.emplace (i, Bar (this, i, false, 0, false, PatternDirection::forward, CreateEmptyStepdata (_NumOfStepsPerBar, 0)));//TODO why step position is 0
+			_patternData->barList.emplace (i, Bar (this, i, false, 0, false, PatternDirection::forward, CreateEmptyStepdata (_NumOfStepsPerBar, i * _NumOfStepsPerBar)));
 	}
 
 	_patternData->patternLastStepId = _patternData->numBars * _NumOfStepsPerBar;
@@ -119,6 +120,7 @@ Pattern::Pattern (const Pattern& source)
 	{
 		this->_patternData->barList.insert (*i);
 	}
+	for (auto& bar : _patternData->barList) bar.second.rebindPattern(this);
 
 	//set edit step
 	this->editStepId = source.editStepId;
@@ -167,6 +169,33 @@ Pattern::Pattern (const Pattern& source)
 		DBG (String (__FUNCTION__) + "::" + String (__LINE__) + "::" + "WARN : Unable to find play bar " + String (playBarId));
 	}
 }
+Pattern::~Pattern() { delete _patternData; }
+Pattern& Pattern::operator=(const Pattern& source)
+{
+    if (this != &source)
+    {
+        Pattern copy(source);
+        std::swap(_patternData, copy._patternData);
+        _patternManager = source._patternManager;
+        editStepId = source.editStepId;
+        playStepId = source.playStepId;
+        rebindChildren();
+    }
+    return *this;
+}
+void Pattern::rebindChildren()
+{
+    editStep = playStep = nullptr;
+    for (auto& bar : _patternData->barList)
+    {
+        bar.second.rebindPattern(this);
+        for (auto& step : bar.second._BarData->stepList)
+        {
+            if (step.second.getStepId() == editStepId) editStep = &step.second;
+            if (step.second.getStepId() == playStepId) playStep = &step.second;
+        }
+    }
+}
 void Pattern::UpdatePattern(PatternData& patternData, std::list<BarData>* barList, std::list<std::list<StepData>>* StepDataList)
 {
 	// Clear existing bar list
@@ -196,6 +225,7 @@ void Pattern::UpdatePattern(PatternData& patternData, std::list<BarData>* barLis
 			break;
 		}
 	}
+	rebindChildren();
 }
 
 std::list<StepData> Pattern::CreateStepWithRandomdata (uint8_t stepCount, uint16_t StartPos)
@@ -454,130 +484,71 @@ BarDataUpdateShallowStatus Pattern::PatternSetBarData (uint16_t barId, ClienPatt
 	return ret;
 }
 
-uint16_t Pattern::AddBar (bool copyAndCreate, uint16_t fromBarId)
+uint16_t Pattern::AddBar(bool copyAndCreate, uint16_t fromBarId)
 {
-	StepData stepData = {};
-	std::list<StepData> StepDataList;
-
-	if (copyAndCreate)
-	{
-		auto bar = _patternData->barList.find (fromBarId);
-		if (bar != _patternData->barList.end())
-		{
-			for (auto stepIt = bar->second._BarData->stepList.begin (); stepIt != bar->second._BarData->stepList.end (); stepIt)
-			{
-				stepData = *(stepIt->second._stepData);
-				stepData.nodeList = stepIt->second._stepData->nodeList;
-				StepDataList.push_back (stepData);
-			}
-			++(_patternData->numBars);
-			_patternData->barList.emplace (_patternData->numBars, Bar (this, _patternData->numBars, bar->second._BarData->barTransposeDefeat, bar->second._BarData->barRepeatCount, bar->second._BarData->gBarSyncOn, bar->second._BarData->direction, StepDataList));
-		}
-		else
-		{
-			DBG (String (__FUNCTION__) + "::" + String (__LINE__) + "::" + "ERR : Unable to locate source bar");
-		}
-	}
-	else
-	{
-		_patternData->barList.emplace (_patternData->numBars, Bar (this, _patternData->numBars, false, 0, false, PatternDirection::forward, CreateEmptyStepdata (_NumOfStepsPerBar, (_patternData->numBars * _NumOfStepsPerBar))));
-		_patternData->numBars++;
-	}
-	return _patternData->numBars;
+    if (_patternData->numBars >= MAX_NUM_OF_BARS_IN_PATTERN) return _patternData->numBars;
+    const auto next = _patternData->numBars;
+    if (copyAndCreate)
+    {
+        const auto source = _patternData->barList.find(fromBarId);
+        if (source == _patternData->barList.end()) return _patternData->numBars;
+        _patternData->barList.emplace(next, Bar(this, source->second));
+    }
+    else
+        _patternData->barList.emplace(next, Bar(this, next, false, 0, false, PatternDirection::forward,
+            CreateEmptyStepdata(_NumOfStepsPerBar, next * _NumOfStepsPerBar)));
+    ++_patternData->numBars;
+    reAssignSequentialIdToBars();
+    reAssignSequentialIdToSteps();
+    _patternData->patternLastStepId = getTotalSteps();
+    rebindChildren();
+    return _patternData->numBars;
 }
 
-int16_t Pattern::addBars (int16_t numBarsToAdd)
+int16_t Pattern::addBars(int16_t numBarsToAdd)
 {
-	int16_t numBars = 0;
-	if (numBarsToAdd + _patternData->numBars > MAX_NUM_OF_BARS_IN_PATTERN)
-	{
-		numBarsToAdd = (numBarsToAdd + _patternData->numBars) - MAX_NUM_OF_BARS_IN_PATTERN;
-		DBG (String (__FUNCTION__) + "::" + String (__LINE__) + "::" + "WARN num bars to add, truncated to " + String (numBarsToAdd));
-	}
-
-	for (auto i = 0; i < numBarsToAdd; ++i)
-	{
-		numBars = AddBar (false, 0);//second arg has no effect
-	}
-
-	_patternData->patternLastStepId = (numBars * MAX_STEPS_IN_PATTERN_BAR) - 1;
-
-	_patternManager->engine.sequenceManager->updateSequence(PatternChangeParameter::numBars, numBars, _patternData->patternName);
-
-	return numBars;
+    numBarsToAdd = std::clamp<int16_t>(numBarsToAdd, 0, MAX_NUM_OF_BARS_IN_PATTERN - _patternData->numBars);
+    for (int i = 0; i < numBarsToAdd; ++i) AddBar(false, 0);
+    _patternManager->engine.sequenceManager->updateSequence(PatternChangeParameter::numBars,
+        _patternData->numBars, _patternData->patternName);
+    return _patternData->numBars;
 }
 
-uint16_t Pattern::insertBar (uint16_t position)
+uint16_t Pattern::insertBar(uint16_t position)
 {
-	if (position < _patternData->numBars)
-	{
-		auto barIter = _patternData->barList.find (position);
-
-		if (barIter == _patternData->barList.end())
-		{
-			_patternData->barList.emplace(barIter->first, Bar(this, _patternData->numBars, false, 0, false, PatternDirection::forward, CreateEmptyStepdata(_NumOfStepsPerBar, (barIter->second._BarData->BarId * _NumOfStepsPerBar))));
-		}
-		else //position already occupied
-		{
-			auto tmpBar = barIter->second;
-			auto tmpPos = barIter->first;
-			auto tmpBarId = barIter->second._BarData->BarId;
-
-			//remove current bar
-			_patternData->barList.erase(barIter);
-
-			//insert new bar
-			_patternData->barList.emplace(tmpPos, Bar(this, _patternData->numBars, false, 0, false, PatternDirection::forward, CreateEmptyStepdata(_NumOfStepsPerBar, (tmpBarId * _NumOfStepsPerBar))));
-
-			//re-add removed bar
-			_patternData->barList.emplace(tmpPos, tmpBar);
-
-		}
-		_patternData->numBars++;
-		reAssignSequentialIdToBars();
-		reAssignSequentialIdToSteps();
-	}
-	else
-	{
-		//Limit to 16 bars max
-		if (position >= MAX_NUM_OF_BARS_IN_PATTERN)
-		{
-			position = MAX_NUM_OF_BARS_IN_PATTERN - 1;
-		}
-
-		int numOfNewBarsToAppend = position - (_patternData->numBars - 1);
-
-		//create new bars and append at end
-		for (int count = 0; count < numOfNewBarsToAppend; ++count)
-		{
-			_patternData->numBars++;
-			_patternData->barList.emplace (_patternData->numBars, Bar (this, _patternData->numBars, false, 0, false, PatternDirection::forward, CreateEmptyStepdata (_NumOfStepsPerBar, (_patternData->numBars * _NumOfStepsPerBar))));
-		}
-
-		reAssignSequentialIdToBars();
-		reAssignSequentialIdToSteps();
-	}
-	return _patternData->numBars;
+    if (_patternData->numBars >= MAX_NUM_OF_BARS_IN_PATTERN) return _patternData->numBars;
+    position = std::min<uint16_t>(position, MAX_NUM_OF_BARS_IN_PATTERN - 1);
+    if (position >= _patternData->numBars)
+    {
+        while (_patternData->numBars <= position) AddBar(false, 0);
+    }
+    else
+    {
+        // Insert before the existing bar at position, preserving both in order.
+        auto insertion = _patternData->barList.lower_bound(position);
+        _patternData->barList.emplace_hint(insertion, position, Bar(this, position, false, 0, false,
+            PatternDirection::forward, CreateEmptyStepdata(_NumOfStepsPerBar, position * _NumOfStepsPerBar)));
+        ++_patternData->numBars;
+        reAssignSequentialIdToBars();
+        reAssignSequentialIdToSteps();
+        _patternData->patternLastStepId = getTotalSteps();
+        rebindChildren();
+    }
+    return _patternData->numBars;
 }
 
-bool Pattern::RemoveBar (uint16_t barId)
+bool Pattern::RemoveBar(uint16_t barId)
 {
-	auto barIt = _patternData->barList.find (barId);
-
-	if (barIt != _patternData->barList.end())
-	{
-		_patternData->barList.erase (barIt);
-		_patternData->numBars--;
-		reAssignSequentialIdToBars ();
-		reAssignSequentialIdToSteps();
-
-		return true;
-	}
-	else
-	{
-		DBG (String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "ERR : Unable top locate the bar to delete");
-	}
-	return false;
+    if (_patternData->numBars <= 1) return false;
+    const auto bar = _patternData->barList.find(barId);
+    if (bar == _patternData->barList.end()) return false;
+    _patternData->barList.erase(bar);
+    --_patternData->numBars;
+    reAssignSequentialIdToBars();
+    reAssignSequentialIdToSteps();
+    _patternData->patternLastStepId = getTotalSteps();
+    rebindChildren();
+    return true;
 }
 
 void Pattern::reAssignSequentialIdToBars()
@@ -605,6 +576,8 @@ void Pattern::reAssignSequentialIdToSteps()
 		for (auto& stepPair : barPair.second._BarData->stepList)
 		{
 			stepPair.second._stepData->stepId = _count;
+            for (auto& pitch : stepPair.second._stepData->nodeList)
+                for (auto& node : pitch.second) node.second.step_id = _count;
 			newStepList.emplace(_count, std::move(stepPair.second));
 			++_count;
 		}
@@ -615,77 +588,30 @@ void Pattern::reAssignSequentialIdToSteps()
 //Single bar copy
 //Destination bar will be overwritten
 //If Destination beyond current last bar, multiple new bars will be created, till destBarId is reached.
-bool Pattern::CopyBar (uint16_t srcBarId, uint16_t destBarId)
+bool Pattern::CopyBar(uint16_t srcBarId, uint16_t destBarId)
 {
-	std::vector<StepData> StepDataList;
-
-	//over-write existing destination bar
-	if (destBarId < _patternData->numBars)
-	{
-		auto barSrcIter = _patternData->barList.find (srcBarId);
-		auto barDestIter = _patternData->barList.find (destBarId);
-
-		//Overwrite destination bar with src bar contents
-		if ( (barSrcIter != _patternData->barList.end()) && (barDestIter != _patternData->barList.end()))
-		{
-			auto stepIterSrc = barSrcIter->second._BarData->stepList.begin ();
-			auto stepIterDest = barDestIter->second._BarData->stepList.begin ();
-
-			barDestIter->second._BarData->BarId = barSrcIter->second._BarData->BarId;
-			barDestIter->second._BarData->barRepeatCount = barSrcIter->second._BarData->barRepeatCount;
-			barDestIter->second._BarData->barTransposeDefeat = barSrcIter->second._BarData->barTransposeDefeat;
-			barDestIter->second._BarData->gBarSyncOn = barSrcIter->second._BarData->gBarSyncOn;
-
-			auto srcStepEnd = barSrcIter->second._BarData->stepList.end();
-			auto destStepEnd = barDestIter->second._BarData->stepList.end();
-			for ( ; (stepIterSrc != srcStepEnd) && (stepIterDest != destStepEnd); ++stepIterSrc, ++stepIterDest)
-			{
-				stepIterDest->second._stepData->auxList    = stepIterSrc->second._stepData->auxList;
-				stepIterDest->second._stepData->enable = stepIterSrc->second._stepData->enable;
-				stepIterDest->second._stepData->nodeCount  = stepIterSrc->second._stepData->nodeCount;
-				stepIterDest->second._stepData->nodeList   = stepIterSrc->second._stepData->nodeList;
-				stepIterDest->second._stepData->skipStatus = stepIterSrc->second._stepData->skipStatus;
-				stepIterDest->second._stepData->stepId     = stepIterSrc->second._stepData->stepId;
-				stepIterDest->second._stepData->transposeDefeatStatus = stepIterSrc->second._stepData->transposeDefeatStatus;
-			}
-
-			reAssignSequentialIdToBars ();
-			reAssignSequentialIdToSteps ();
-		}
-	}//create new bars and append at end
-	else
-	{
-		//Limit to 16 bars max
-		if (destBarId >= MAX_NUM_OF_BARS_IN_PATTERN)
-		{
-			destBarId = MAX_NUM_OF_BARS_IN_PATTERN - 1;
-		}
-
-		int numOfNewBarsToAppend = destBarId - (_patternData->numBars - 1);
-
-		//get the source bar
-		auto srcBarIter = _patternData->barList.find (srcBarId);
-
-		if (srcBarIter != _patternData->barList.end())
-		{
-			auto &tmpBar = srcBarIter->second;
-
-			for (int count = 0; count < numOfNewBarsToAppend; ++count)
-			{
-				_patternData->numBars++;
-				_patternData->barList.emplace (_patternData->numBars, tmpBar);
-			}
-
-			reAssignSequentialIdToBars();
-			reAssignSequentialIdToSteps();
-		}
-		else
-		{
-			DBG (String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "ERR : Copy bar unable to locate src bar");
-		}
-	}
-
-	return true;
+    const auto source = _patternData->barList.find(srcBarId);
+    if (source == _patternData->barList.end() || destBarId >= MAX_NUM_OF_BARS_IN_PATTERN) return false;
+    if (srcBarId == destBarId) return true;
+    // Copy before changing the container, including ties, direction and all note data.
+    Bar copy(this, source->second);
+    if (destBarId < _patternData->numBars)
+    {
+        const auto destination = _patternData->barList.find(destBarId);
+        if (destination == _patternData->barList.end()) return false;
+        destination->second = copy;
+    }
+    else
+        while (_patternData->numBars <= destBarId)
+        {
+            _patternData->barList.emplace(_patternData->numBars, Bar(this, copy));
+            ++_patternData->numBars;
+        }
+    reAssignSequentialIdToBars();
+    reAssignSequentialIdToSteps();
+    _patternData->patternLastStepId = getTotalSteps();
+    rebindChildren();
+    return true;
 }
 
 std::list<StepData> Pattern::CopyClientStepDataToStepData (std::list<ClientPatternStepData> clientPatternStepData)

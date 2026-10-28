@@ -257,6 +257,7 @@ engineMsgQ (IgniteConstants::msgQueueSize)
 void IgniteEngine::initialize (SongManager* songmgr, PatternManager* patternmgr, InstrumentManager* instrumentmgr)
 {
 	songManager = songmgr;
+	sceneManager = _PSceneMgr.get();
 	patternManager = patternmgr;
 	instrumentManager = instrumentmgr;
 	frontPannelManager = _PFrontPannelMgr.get ();
@@ -297,9 +298,10 @@ void IgniteEngine::engineThreadFunc (void)
 	IgniteMessageParam msg;
 	/* Do housekeeping - after all module init */
 	enginePowerOnHousekeeping();
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		engineMsgQ.get (msg, TimeOut::kWaitForever);
+		if (!engineMsgQ.get(msg, TimeOut::kWaitForever)) break;
+		auto stateLock = lockDesktopState();
 		if (_modules.find (msg.moduleDst) != _modules.end ())
 		{
 			if (msg.messageType == MsgType::msgSetParam)
@@ -321,8 +323,24 @@ void IgniteEngine::engineThreadFunc (void)
 		}
 	}
 }
+void IgniteEngine::shutdownDesktop()
+{
+#ifdef _WIN32
+    CThread::requestDesktopShutdown();
+    juce::Logger::writeToLog("Shutdown: stopping clock");
+    CMidiClock::getInstance().shutdownDesktop();
+    juce::Logger::writeToLog("Shutdown: stopping song workers");
+    songManager->shutdownDesktop();
+    juce::Logger::writeToLog("Shutdown: stopping panel workers");
+    frontPannelManager->shutdownDesktop();
+    juce::Logger::writeToLog("Shutdown: stopping engine worker");
+    engineThread.stopThread();
+    juce::Logger::writeToLog("Shutdown: engine workers stopped");
+#endif
+}
 void IgniteEngine::addListener (IListener* listener)
 {
+	auto stateLock = lockDesktopState();
 	if (_listeners.find (listener) == _listeners.end ()) {
 		_listeners.emplace (listener, Subscriptions ());
 	}
@@ -330,6 +348,7 @@ void IgniteEngine::addListener (IListener* listener)
 
 std::vector<IgniteParamList> IgniteEngine::getParam (moduleId_t moduleSrc, moduleId_t moduleDst, std::vector<IgniteParamList> paramlist)
 {
+	auto stateLock = lockDesktopState();
 	IgniteMessageParam msg;
 	msg.moduleDst = moduleDst;
 	msg.moduleSrc = moduleSrc;
@@ -354,6 +373,7 @@ std::vector<IgniteParamList> IgniteEngine::getParam (moduleId_t moduleSrc, modul
 }
 void IgniteEngine::getParam (moduleId_t moduleSrc, moduleId_t moduleDst, paramId_t param)
 {
+	auto stateLock = lockDesktopState();
 	IgniteMessageParam msg;
 	msg.moduleDst = moduleDst;
 	msg.moduleSrc = moduleSrc;
@@ -394,6 +414,7 @@ void IgniteEngine::setParam (moduleId_t moduleSrc, moduleId_t moduleDst, paramId
 // send commands bypassing queue - Blocking call
 bool IgniteEngine::SetCommand (moduleId_t moduleSrc, moduleId_t moduleDst, paramId_t param, AnyType value, bool isPlayMode)
 {
+	auto stateLock = lockDesktopState();
 	if (_modules.find (moduleDst) != _modules.end ())
 	{
 		_modules[moduleDst]->setParam (moduleSrc, param, value, isPlayMode);
@@ -419,6 +440,7 @@ void IgniteEngine::SetCommandParam (moduleId_t moduleSrc, moduleId_t moduleDst, 
 
 void IgniteEngine::subscribe (moduleId_t module, paramId_t param, IListener* src)
 {
+	auto stateLock = lockDesktopState();
 	if (_listeners.find (src) != _listeners.end ()) {
 		if (_modules.find (module) != _modules.end ()) {
 			if (param) {
@@ -444,6 +466,7 @@ void IgniteEngine::subscribe (moduleId_t module, paramId_t param, IListener* src
 }
 void IgniteEngine::unsubscribe (moduleId_t module, paramId_t param, IListener* src)
 {
+	auto stateLock = lockDesktopState();
 	if (_listeners.find (src) != _listeners.end ()) {
 		std::cout << "Unsubscribe Param, Module Id: " << static_cast<uint32_t>(module) << ", Param Id: " << static_cast<uint32_t>(param) << std::endl;
 		if (_modules.find (module) != _modules.end ()) {
@@ -469,32 +492,42 @@ void IgniteEngine::unsubscribe (moduleId_t module, paramId_t param, IListener* s
 }
 bool IgniteEngine::SaveAllData()
 {
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleInstrument, (paramId_t)InstrumentParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::modulePattern, (paramId_t)PatternParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleScene, (paramId_t)SceneParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsBRayCnfg, (paramId_t)SettingsBRayCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleCvioCnfg, (paramId_t)SettingsCvioCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingGnrlCnfg, (paramId_t)SettingsGeneralCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsMidiClkCnfg, (paramId_t)SettingsMidiClkCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleMidiCnfg, (paramId_t)SettingsMidiCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsMidiMachineControlCnfg, (paramId_t)SettingsMidiMachineControlCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsPatternCnfg, (paramId_t)SettingsPatternCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsRecordCnfg, (paramId_t)SettingsRecordCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsRemoteControlCnfg, (paramId_t)SettingsRemoteControlCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingSceneCnfg, (paramId_t)SettingsSceneCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsSculptModeCnfg, (paramId_t)SettingsSculptModeCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingSongCnfg, (paramId_t)SettingsSongCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsTrackCnfg, (paramId_t)SettingsTrackCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsTrackInstrumentMixer, (paramId_t)SettingsTrackInstrumentMixerParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsTransposeControlCnfg, (paramId_t)SettingsTransposeControlCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsUdsCnfg, (paramId_t)SettingsUdsCnfgParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSong, (paramId_t)SongParam::paramSaveAll, 0);
-	setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleTrack, (paramId_t)TrackParam::paramSaveAll, 0);
+	auto stateLock = lockDesktopState();
+    auto desktopSaveParam = [this](moduleId_t source, moduleId_t destination, paramId_t parameter, int value)
+    {
+#ifdef _WIN32
+        SetCommand(source, destination, parameter, value);
+#else
+        setParam(source, destination, parameter, value);
+#endif
+    };
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleInstrument, (paramId_t)InstrumentParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::modulePattern, (paramId_t)PatternParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleScene, (paramId_t)SceneParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsBRayCnfg, (paramId_t)SettingsBRayCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleCvioCnfg, (paramId_t)SettingsCvioCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingGnrlCnfg, (paramId_t)SettingsGeneralCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsMidiClkCnfg, (paramId_t)SettingsMidiClkCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleMidiCnfg, (paramId_t)SettingsMidiCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsMidiMachineControlCnfg, (paramId_t)SettingsMidiMachineControlCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsPatternCnfg, (paramId_t)SettingsPatternCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsRecordCnfg, (paramId_t)SettingsRecordCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsRemoteControlCnfg, (paramId_t)SettingsRemoteControlCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingSceneCnfg, (paramId_t)SettingsSceneCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsSculptModeCnfg, (paramId_t)SettingsSculptModeCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingSongCnfg, (paramId_t)SettingsSongCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsTrackCnfg, (paramId_t)SettingsTrackCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsTrackInstrumentMixer, (paramId_t)SettingsTrackInstrumentMixerParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsTransposeControlCnfg, (paramId_t)SettingsTransposeControlCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsUdsCnfg, (paramId_t)SettingsUdsCnfgParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSong, (paramId_t)SongParam::paramSaveAll, 0);
+	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleTrack, (paramId_t)TrackParam::paramSaveAll, 0);
 
 	return true;
 }
 void IgniteEngine::onParameterChanged (moduleId_t moduleSrc, ParameterBase* param)
 {
+	auto stateLock = lockDesktopState();
 	for (auto& it : _listeners) {
 		// Check if Subscription exists for param or module
 		if (it.second.exist (param) || it.second.exist (&param->GetModule ()))
@@ -506,6 +539,7 @@ void IgniteEngine::onParameterChanged (moduleId_t moduleSrc, ParameterBase* para
 
 void IgniteEngine::SendResponse (moduleId_t module, moduleId_t moduleSrc, paramId_t param, const AnyType& value)
 {
+	auto stateLock = lockDesktopState();
 	ParameterBase* pParam = _modules[module]->FindParameter (param);
 	if (pParam != NULL)
 	{
@@ -523,23 +557,28 @@ void IgniteEngine::SendResponse (moduleId_t module, moduleId_t moduleSrc, paramI
 
 std::list<std::string> IgniteEngine::EngineGetPatternList (bool isDisplayName)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrGetPatterList (isDisplayName);
 }
 ClientPatternData IgniteEngine::EngineGetPatternData (std::string patternName)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrGetPatternData (patternName);
 }
 std::list<ClienPatterntBarData>  IgniteEngine::EngineGetBarData (std::string patternName)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrGetBarData (patternName);
 }
 std::list<ClientPatternStepData> IgniteEngine::EngineGetStepData (std::string patternName, uint16_t BarId)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrGetStepData (patternName, BarId);
 }
 
 bool IgniteEngine::EngineSetPatternData (moduleId_t moduleSrc, std::string patternName, ClientPatternData patternData, bool isPlayModeData, PatternDataUpdateReasonType UpdateReasonType )
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrSetPatternDataOptimized (moduleSrc, patternName, &patternData, UpdateReasonType, isPlayModeData);
 	//return patternManager->PatternMngrSetPatternData (moduleSrc, patternName, patternData, UpdateReasonType, isPlayModeData);
 }
@@ -547,67 +586,80 @@ bool IgniteEngine::EngineSetPatternData (moduleId_t moduleSrc, std::string patte
 #if 0
 bool IgniteEngine::EngineSetPatternData(moduleId_t moduleSrc, std::string patternName, ClientPatternData& patternData, PatternDataUpdateLocation location, bool isPlayModeData, PatternDataUpdateReasonType UpdateReasonType)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrSetPatternDataOptimized(moduleSrc, patternName, patternData, location, UpdateReasonType, isPlayModeData);
 }
 #endif
 
 bool IgniteEngine::EngineSetBarData (moduleId_t moduleSrc, std::string patternName, uint16_t BarId, ClienPatterntBarData barData)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrSetBarData (moduleSrc, patternName, BarId, barData);
 }
 bool IgniteEngine::EngineSetStepData (moduleId_t moduleSrc, std::string patternName, uint16_t BarId, uint16_t stepId, ClientPatternStepData stepData)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrSetStepData (moduleSrc, patternName, BarId, stepId, stepData);
 }
 bool IgniteEngine::EngineCopyPatternBar (std::string patternName, uint16_t srcBarId, uint16_t destBarId)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternCopyBar (patternName, srcBarId, destBarId);
 }
 
 bool  IgniteEngine::EngineAddPatternBar (std::string patternName, bool CopyAndCreate, uint16_t FromBarId, uint16_t NumBarToAdd)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternAddBar (patternName, CopyAndCreate, FromBarId, NumBarToAdd);
 }
 
 bool  IgniteEngine::EngineInsertPatternBar (std::string patternName, uint16_t InsertPosition)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->patternInsertBar (patternName, InsertPosition);
 }
 
 bool IgniteEngine::EngineRemovePatternBar (std::string patternName, uint16_t BarId, uint16_t NumBarToRemove)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternRemoveBar (patternName, BarId, NumBarToRemove);
 }
 
 bool IgniteEngine::EngineInsertPatternStep (std::string patternName, uint16_t BarId, uint8_t stepCount, uint8_t InsertAt, std::vector<ClientPatternStepData> ToStepDataList)
 {
+	auto stateLock = lockDesktopState();
 	//return patternManager->PatternInsertStep (patternName, BarId, stepCount, InsertAt, ToStepDataList);
 	return false; //TODO
 }
 
 bool IgniteEngine::EngineAddNodeData (std::string patternName, uint16_t BarId, uint16_t stepId, ClientPatternNodeData nodeData)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrAddNodeData (patternName, BarId, stepId, nodeData, false);
 }
 
 bool IgniteEngine::EngineAddNodeData (std::string patternName, uint16_t BarId, std::map<ClientPatternNodeData, std::list<uint8_t>> stepMap)
 {
+	auto stateLock = lockDesktopState();
 
 	return patternManager->PatternMngrAddNodeData (patternName, BarId, stepMap, false);
 }
 
 bool IgniteEngine::EngineDelNodeData (std::string patternName, uint16_t BarId, uint16_t stepId, uint16_t nodeData)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternMngrDelNodeData (patternName, BarId, stepId, nodeData, false);
 }
 
 bool IgniteEngine::EnginecopyPattern (std::string SrcpatternName, std::string DstpatternName)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->copyPattern (SrcpatternName, DstpatternName);
 }
 
 int8_t IgniteEngine::getSceneBarCount (void)
 {
+	auto stateLock = lockDesktopState();
 	if ((songManager == nullptr) || (songManager->getActiveSong () == nullptr) || (songManager->getActiveSong ()->getEditScene () == nullptr))
 	{
 		return -1;
@@ -616,6 +668,7 @@ int8_t IgniteEngine::getSceneBarCount (void)
 }
 int8_t IgniteEngine::getSceneGbarStepCount (void)
 {
+	auto stateLock = lockDesktopState();
 	if ((songManager == nullptr) || (songManager->getActiveSong () == nullptr) || (songManager->getActiveSong ()->getEditScene () == nullptr))
 	{
 		return -1;
@@ -625,10 +678,12 @@ int8_t IgniteEngine::getSceneGbarStepCount (void)
 }
 std::list<PatternDataUpdateReasonType> IgniteEngine::EnginePatternGetUndoList (void)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternGetUndoList ();
 }
 bool IgniteEngine::PatternMngrPatternRotate (std::string patternName, uint16_t BarID, uint16_t StepID)
 {
+	auto stateLock = lockDesktopState();
 	return patternManager->PatternRotate (patternName, BarID, StepID);
 }
 void IgniteEngine::setAutoSaveAllModules(bool status)

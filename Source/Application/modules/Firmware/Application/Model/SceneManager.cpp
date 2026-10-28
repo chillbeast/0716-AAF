@@ -156,11 +156,10 @@ void SceneManager::ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool
 				break;
 
 			case SceneParam::paramSaveAll:
-				ClearUndoList();//Save Song will save all scene
+                // Song Save All commits the complete song and clears scene undo only on success.
 				break;
 			case SceneParam::paramSaveSceneCmd:
 				SaveData();
-				ClearUndoList();
 				break;
 
 			case SceneParam::paramUndoCmd:
@@ -245,7 +244,10 @@ void SceneManager::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	SceneManager::saveScene();
+	if (SceneManager::saveScene())
+    {
+        markSaved();
+    }
 
 }
 std::vector<IgniteParamList> SceneManager::getParamList(moduleId_t moduleSrc, std::vector<IgniteParamList>& paramlist)
@@ -740,10 +742,9 @@ void SceneManager::setSceneName(std::string name)
 
 	SongMgr->getActiveSong()->editScene->setName(name);
 }
-void SceneManager::saveScene(CSong& song, Scene& scene)
+bool SceneManager::saveScene(CSong& song, Scene& scene)
 {
-	engine.get_fileHandler()->DeleteScene(song.getName(), scene.getName());
-	engine.get_fileHandler()->CreateScene(song.getName(), *(scene._sceneData));
+    return engine.get_fileHandler()->CreateScene(song.getName(), *scene._sceneData) == FILE_OK;
 }
 void SceneManager::setStartScene(int32_t index)
 {
@@ -756,23 +757,20 @@ void SceneManager::setStartScene(int32_t index)
 	SongMgr->getActiveSong()->setStartSceneId(index);
 }
 
-void SceneManager::saveScene(void)
+bool SceneManager::saveScene(void)
 {
 	if ((SongMgr->getActiveSong() == nullptr) || (SongMgr->getActiveSong()->editScene == nullptr))
 	{
 		//TODO warn
-		return;
+		return false;
 	}
 	auto activeSong = SongMgr->getActiveSong ();
 	auto editScene = SongMgr->getActiveSong ()->editScene;
 
-	//TODO check how this function would return names for second and subsequent scenes
-	std::string fileSystemSceneName = (std::string)(GetDefaultDataFromList((paramId_t)SceneParam::paramSceneName).get<std::string>().c_str());
-	if (fileSystemSceneName != editScene->getName())
-		engine.get_fileHandler()->DeleteScene(activeSong->getName(), fileSystemSceneName);
-
-	engine.get_fileHandler()->DeleteScene(activeSong->getName(), editScene->getName());
-	engine.get_fileHandler()->CreateScene(activeSong->getName(), *editScene->_sceneData);
+    if (engine.get_fileHandler()->CreateScene(activeSong->getName(), *editScene->_sceneData) != FILE_OK) return false;
+    const auto fileSystemSceneName = GetDefaultDataFromList((paramId_t)SceneParam::paramSceneName).get<std::string>();
+    if (fileSystemSceneName != editScene->getName())
+        engine.get_fileHandler()->DeleteScene(activeSong->getName(), fileSystemSceneName);
 
 
 	std::list <Pattern*> PatternList;
@@ -799,6 +797,7 @@ void SceneManager::saveScene(void)
 		if (it != NULL)
 			it->saveInstrumentUsedByList();
 	}
+    return true;
 }
 
 void SceneManager::saveSceneInfo(SceneData& sceneData)

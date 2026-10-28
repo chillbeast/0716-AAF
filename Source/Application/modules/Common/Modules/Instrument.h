@@ -24,7 +24,7 @@ namespace Ignite
 		explicit Instrument (int32_t id, std::string name, int8_t port, int8_t chan, InstrumentManager* instMgr);
 		Instrument (InstrumentData instrumentData, InstrumentManager* instMgr);
 		Instrument (const Instrument& source);
-		Instrument& operator= (const Instrument&) = default;
+		Instrument& operator= (const Instrument& source);
 		~Instrument ();
 
 		void setMidiPort (int8_t val);

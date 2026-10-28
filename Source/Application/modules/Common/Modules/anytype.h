@@ -2,6 +2,9 @@
 
 #include <sstream>
 #include <string>
+#include <variant>
+#include <type_traits>
+#include <cstdint>
 #include "common_defs/source/IgniteMessage.h"
 
 namespace Ignite {
@@ -63,7 +66,7 @@ namespace Ignite {
 
 		static const char* GetTypeName (MTDataType type)
 		{
-			static const char* typenames[] = { "bool", "u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64", "float", "str" };
+			static const char* typenames[] = { "bool", "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "float", "str" };
 			return typenames[(uint8_t)type];
 		}
 
@@ -203,171 +206,66 @@ namespace Ignite {
 		T _data;
 	};
 
+	// Own each message value and preserve its type across queue copies and undo.
 	class AnyType {
 	public:
-		AnyType ()
-			: _store (0)
-		{
-			_data = &_store;
-		}
-
-		AnyType (const MTDataType type)
+		AnyType() : value(uint64_t(0)) {}
+		explicit AnyType(MTDataType type) : AnyType()
 		{
 			switch (type) {
-				case MTDataType::BOOL:
-					_data = new (&_store) AnyTypeStore<bool> (0);
-					break;
-				case MTDataType::INT8:
-					_data = new (&_store) AnyTypeStore<int8_t> (0);
-					break;
-				case MTDataType::UINT8:
-					_data = new (&_store) AnyTypeStore<uint8_t> (0);
-					break;
-				case MTDataType::INT16:
-					_data = new (&_store) AnyTypeStore<int16_t> (0);
-					break;
-				case MTDataType::UINT16:
-					_data = new (&_store) AnyTypeStore<uint16_t> (0);
-					break;
-				case MTDataType::INT32:
-					_data = new (&_store) AnyTypeStore<int32_t> (0);
-					break;
-				case MTDataType::UINT32:
-					_data = new (&_store) AnyTypeStore<uint32_t> (0);
-					break;
-				case MTDataType::INT64:
-					_data = new (&_store) AnyTypeStore<int64_t> (0);
-					break;
-				case MTDataType::UINT64:
-					_data = new (&_store) AnyTypeStore<uint64_t> (0);
-					break;
-				case MTDataType::FLOAT32:
-					_data = new (&_store) AnyTypeStore<float> (0);
-					break;
-				case MTDataType::STRING:
-					_data = new AnyTypeStore<std::string> ("");
-					break;
-				default:
-					break;
+			case MTDataType::BOOL: value = false; break;
+			case MTDataType::INT8: value = int8_t(0); break;
+			case MTDataType::UINT8: value = uint8_t(0); break;
+			case MTDataType::INT16: value = int16_t(0); break;
+			case MTDataType::UINT16: value = uint16_t(0); break;
+			case MTDataType::INT32: value = int32_t(0); break;
+			case MTDataType::UINT32: value = uint32_t(0); break;
+			case MTDataType::INT64: value = int64_t(0); break;
+			case MTDataType::UINT64: value = uint64_t(0); break;
+			case MTDataType::FLOAT32: value = 0.0f; break;
+			case MTDataType::STRING: value = std::string(); break;
 			}
 		}
+		AnyType(bool v) : value(v) {}
+		AnyType(int8_t v) : value(v) {}
+		AnyType(uint8_t v) : value(v) {}
+		AnyType(int16_t v) : value(v) {}
+		AnyType(uint16_t v) : value(v) {}
+		AnyType(int32_t v) : value(v) {}
+		AnyType(uint32_t v) : value(v) {}
+		AnyType(int64_t v) : value(v) {}
+		AnyType(uint64_t v) : value(v) {}
+		AnyType(float v) : value(v) {}
+		AnyType(const std::string& v) : value(v) {}
+		AnyType(const char* v) : value(std::string(v ? v : "")) {}
+		AnyType(const AnyType&) = default;
+		AnyType(AnyType&&) noexcept = default;
+		AnyType& operator=(const AnyType&) = default;
+		AnyType& operator=(AnyType&&) noexcept = default;
+		~AnyType() = default;
 
-		AnyType (const AnyType& other)
+		MTDataType GetType() const { return std::visit([](const auto& v) { return model::GetType(v); }, value); }
+		std::string ToString() const { return std::visit([](const auto& v) { return model::ToString(v); }, value); }
+		const char* TypeName() const { return model::GetTypeName(GetType()); }
+		template <typename T> T get() const
 		{
-			if (other.GetType () == MTDataType::STRING) {
-				_data = new AnyTypeStore<std::string> (other.get<std::string> ());
-			}
-			else {
-				_store = other._store;
-				_data = &_store;
-			}
+			return std::visit([](const auto& stored) -> T {
+				using S = std::decay_t<decltype(stored)>;
+				if constexpr (std::is_same_v<T, S>) return stored;
+				else if constexpr (std::is_arithmetic_v<T> && std::is_arithmetic_v<S>) return static_cast<T>(stored);
+				else if constexpr (std::is_same_v<T, std::string>) return model::ToString(stored);
+				else throw std::bad_variant_access();
+			}, value);
 		}
-		AnyType (const bool& value) { _data = new (&_store) AnyTypeStore<bool> (value); }
-		AnyType (const int8_t& value) { _data = new (&_store) AnyTypeStore<int8_t> (value); }
-		AnyType (const uint8_t& value) { _data = new (&_store) AnyTypeStore<uint8_t> (value); }
-		AnyType (const int16_t& value) { _data = new (&_store) AnyTypeStore<int16_t> (value); }
-		AnyType (const uint16_t& value) { _data = new (&_store) AnyTypeStore<uint16_t> (value); }
-		AnyType (const int32_t& value) { _data = new (&_store) AnyTypeStore<int32_t> (value); }
-		AnyType (const uint32_t& value) { _data = new (&_store) AnyTypeStore<uint32_t> (value); }
-		AnyType (const int64_t& value) { _data = new (&_store) AnyTypeStore<int64_t> (value); }
-		AnyType (const uint64_t& value) { _data = new (&_store) AnyTypeStore<uint64_t> (value); }
-		AnyType (const float& value) { _data = new (&_store) AnyTypeStore<float> (value); }
-		AnyType (const std::string& value) { _data = new AnyTypeStore<std::string> (value); }
-		AnyType (const char* value) { _data = new AnyTypeStore<std::string> (value); }
-
-		~AnyType ()
-		{
-			destroyData ();
-		}
-		MTDataType GetType () const { return _data->GetType (); }
-
-		std::string ToString () const
-		{
-			return _data->ToString ();
-		}
-
-		const char* TypeName () const
-		{
-			return _data->TypeName ();
-		}
-
-		void destroyData ()
-		{
-			if (_data == &_store) {
-				_data->~AnyTypeBase ();
-			}
-			else if (_data) {
-				delete _data;
-			}
-			_data = nullptr;
-		}
-
-		AnyType& operator=(const AnyType& rhs)
-		{
-			if (this != &rhs) {
-				//if (GetType() == rhs.GetType()) //TODO: check to be corrected? Aman
-				{
-					if (rhs.GetType () == MTDataType::STRING) {
-						if (GetType () == MTDataType::STRING && _data) {
-							delete (_data);
-						}
-						_data = new AnyTypeStore<std::string> (rhs.get<std::string> ());
-					}
-					else {
-						_store = rhs._store;
-						_data = &_store;
-					}
-				}
-			}
-			return *this;
-		}
-
-		template <typename T>
-		const T& get () const
-		{
-			auto typed = (AnyTypeStore<T>*)_data;
-			return typed->_data;
-		}
-
-		template <typename T>
-		void set (const T& value)
-		{
-			MTDataType type = model::GetType (value);
-
-			if (GetType () == type) {
-				auto typed = (AnyTypeStore<T>*)_data;
-				typed->_data = value;
-			}
-			else {
-				destroyData ();
-				switch (type) {
-					case MTDataType::BOOL:
-					case MTDataType::INT8:
-					case MTDataType::UINT8:
-					case MTDataType::INT16:
-					case MTDataType::UINT16:
-					case MTDataType::INT32:
-					case MTDataType::UINT32:
-					case MTDataType::INT64:
-					case MTDataType::UINT64:
-					case MTDataType::FLOAT32: {
-						_data = new (&_store) AnyTypeStore<T> (value);
-					} break;
-					default: {
-						_data = new AnyTypeStore<T> (value);
-					} break;
-				}
-			}
-		}
-		bool operator<(AnyType& rhs) { return (*_data) < (*rhs._data); }
-		bool operator<=(AnyType& rhs) { return (*_data) <= (*rhs._data); }
-		bool operator>(AnyType& rhs) { return (*_data) > (*rhs._data); }
-		bool operator>=(AnyType& rhs) { return (*_data) >= (*rhs._data); }
-		bool operator==(AnyType& rhs) { return (*_data) == (*rhs._data); }
-		bool operator!=(AnyType& rhs) { return (*_data) != (*rhs._data); }
-
+		template <typename T> void set(const T& v) { value = v; }
+		void destroyData() { value = uint64_t(0); }
+		bool operator<(const AnyType& rhs) const { return GetType() == rhs.GetType() && value < rhs.value; }
+		bool operator<=(const AnyType& rhs) const { return GetType() == rhs.GetType() && value <= rhs.value; }
+		bool operator>(const AnyType& rhs) const { return GetType() == rhs.GetType() && value > rhs.value; }
+		bool operator>=(const AnyType& rhs) const { return GetType() == rhs.GetType() && value >= rhs.value; }
+		bool operator==(const AnyType& rhs) const { return GetType() == rhs.GetType() && value == rhs.value; }
+		bool operator!=(const AnyType& rhs) const { return GetType() != rhs.GetType() || value != rhs.value; }
 	private:
-		AnyTypeBase* _data;
-		AnyTypeStore<uint64_t> _store;
+		std::variant<bool, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t, float, std::string> value;
 	};
 }

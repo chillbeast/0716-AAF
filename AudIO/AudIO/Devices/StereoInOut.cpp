@@ -75,7 +75,7 @@ namespace AudIO
             }
         }
 
-        doProcess();
+        IAudioDevice::process(_buffer);
 
         // Copy to actual audio device buffer
         for( int ch = 0; ch < _buffer.getNumOutputChannels(); ++ch )

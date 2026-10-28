@@ -1,6 +1,6 @@
 # AudIO
 
-AudIO is the audio engine library used by IGNITE. It is a patchable graph of audio objects (oscillators,
+AudIO is the audio engine library bundled with IGNITE. The current main application uses its own firmware TinySoundFont path rather than linking this library. AudIO is a patchable graph of audio objects (oscillators,
 ADSR, mixer, playback and recorder, SoundFont synth, Airwindows effects) with buses, chains and a small
 DAW layer. It can be used as a JUCE module (`AudIO/AudIO.h`) or on its own through CMake. See
 `AudIO/Example/` for usage.
@@ -9,6 +9,8 @@ DAW layer. It can be used as a JUCE module (`AudIO/AudIO.h`) or on its own throu
 cmake -S . -B build      # out-of-source builds only
 cmake --build build
 ```
+
+The default build produces `AudIO_Core`, `DAW_Core` and `AirWindows_plugins`. Example applications are optional prototypes; add `-DAUDIO_BUILD_EXAMPLES=ON` to configure them. For Windows x64 use the Visual Studio 2022 generator and `--config Release`. The repository's `scripts/build-windows.ps1` builds these libraries separately from the simulator.
 
 ## License
 

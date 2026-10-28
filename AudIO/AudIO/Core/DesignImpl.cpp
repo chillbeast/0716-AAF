@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DesignImpl.h"
+#include "../Includes/Design.h"
 
 namespace AudIO
 {

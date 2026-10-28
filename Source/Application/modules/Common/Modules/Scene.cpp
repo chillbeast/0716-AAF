@@ -43,39 +43,35 @@ Scene::Scene (int32_t id, std::string name, float tempo, int8_t swing, uint8_t n
 	}
 }
 
-Scene::Scene (const Scene& source) :
-	Scene (source._sceneData->sceneId, source._sceneData->sceneName, source._sceneData->sceneTempo, source._sceneData->sceneSwing, source._sceneData->numberOfTracks, source._sceneData->trackMuteStatus, source._songManager)
+Scene::Scene (const Scene& source)
+    : _sceneData(new SceneData(*source._sceneData)), editTrackId(source.editTrackId),
+      gStepId(source.gStepId), gBarId(source.gBarId), _songManager(source._songManager),
+      _sceneMuteHold(source._sceneMuteHold)
 {
-	//copy scene data from source scene
-	_sceneData->transposeAfterFTS = source._sceneData->transposeAfterFTS;
-	_sceneData->gBarLenInSteps = source._sceneData->gBarLenInSteps;
-	_sceneData->numBars = source._sceneData->numBars;
-	_sceneData->mode = source._sceneData->mode;
-	_sceneData->scaleFTS = source._sceneData->scaleFTS;
-	_sceneData->noteFTS = source._sceneData->noteFTS;
-	_sceneData->transposeValue = source._sceneData->transposeValue;
+    rebindSelection();
+}
 
-	//copy track list
-	auto start = source._sceneData->trackList.begin ();
-	auto end = source._sceneData->trackList.end ();
-	this->_sceneData->trackList.clear ();
-	for (auto i = start; i != end; ++i)
-	{
-		this->_sceneData->trackList.push_back (*i);
-	}
+Scene& Scene::operator=(const Scene& source)
+{
+    if (this != &source)
+    {
+        Scene copy(source);
+        std::swap(_sceneData, copy._sceneData);
+        editTrackId = source.editTrackId;
+        gStepId = source.gStepId;
+        gBarId = source.gBarId;
+        _songManager = source._songManager;
+        _sceneMuteHold = source._sceneMuteHold;
+        rebindSelection();
+    }
+    return *this;
+}
 
-	//set edit track
-	auto start_n = this->_sceneData->trackList.begin ();
-	auto end_n = this->_sceneData->trackList.end ();
-	this->editTrackId = source.editTrackId;
-	for (auto i = start_n; i != end_n; ++i)
-	{
-		if (this->editTrackId == (*i)._trackData->trackId)
-		{
-			this->editTrack = &(*i);
-			break;
-		}
-	}
+void Scene::rebindSelection()
+{
+    editTrack = nullptr;
+    for (auto& track : _sceneData->trackList)
+        if (track.getTrackId() == editTrackId) editTrack = &track;
 }
 
 Scene::~Scene ()

@@ -33,20 +33,46 @@ enginePublishQ(IgniteConstants::msgQueueSizeUI)
 	engine->subscribe ((moduleId_t)ModuleName::moduleSettingsUdsCnfg, (paramId_t)SettingsUdsCnfgParam::paramall, this);
 	engine->subscribe ((moduleId_t)ModuleName::moduleSettingsMidiClkCnfg, (paramId_t)SettingsMidiClkCnfgParam::paramall, this);
 
-	startTimer(4000);
 	watchdogThread = std::make_unique<WatchDogService>();
-	timerCallback();
+	watchdogThread->pingWatchdogThread();
+	lastWatchdogPing = juce::Time::getMillisecondCounter();
 	watchdogThread->startThread();
+#ifdef _WIN32
+	startTimer(10);
+#else
+	startTimer(4000);
 	startThread();
+#endif
+}
+void UiInterface::timerCallback()
+{
+#ifdef _WIN32
+    // Apply UI updates on the message thread. A publisher thread holding the
+    // MessageManagerLock could otherwise wait on a model call made by the UI.
+    IgniteMessageParam msg;
+    for (int count = 0; count < 64 && enginePublishQ.get(msg, TimeOut::kNoWait); ++count)
+        publishHandler(msg.moduleDst, msg.moduleSrc, msg.param, msg.MsgValue, msg.isPlayMode);
+    const auto now = juce::Time::getMillisecondCounter();
+    if (now - lastWatchdogPing < 4000 && lastWatchdogPing != 0) return;
+    lastWatchdogPing = now;
+#endif
+    watchdogThread->pingWatchdogThread();
 }
 void UiInterface::run(void)
 {
 	IgniteMessageParam msg;
-	while (true)
+	while (!threadShouldExit() && !CThread::desktopShutdownRequested())
 	{
-		enginePublishQ.get(msg, TimeOut::kWaitForever);
+		if (!enginePublishQ.get(msg, TimeOut::kWaitForever)) break;
 		publishHandler(msg.moduleDst, msg.moduleSrc, msg.param, msg.MsgValue, msg.isPlayMode);
 	}
+}
+UiInterface::~UiInterface()
+{
+    stopTimer();
+    signalThreadShouldExit();
+    stopThread(3000);
+    if (watchdogThread) watchdogThread->stopThread(3000);
 }
 void UiInterface::publish(moduleId_t module, moduleId_t moduleSrc, paramId_t param, const AnyType& value, bool isResponse)
 {
@@ -58,7 +84,7 @@ void UiInterface::publish(moduleId_t module, moduleId_t moduleSrc, paramId_t par
 		msg.param = param;
 		msg.MsgValue = value;
 		msg.isPlayMode = isResponse;
-		enginePublishQ.put(msg);
+		enginePublishQ.put(msg, TimeOut::kNoWait);
 	}
 	else
 	{

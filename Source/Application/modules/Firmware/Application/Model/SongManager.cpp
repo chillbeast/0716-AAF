@@ -74,7 +74,7 @@ bool SongManager::usbHostMidiDevDisconnectSigReceived = false;
 
 void *SongManager::handleUsbHostMidiDevices (void *arg) 
 {
-	while (1)
+	while (!CThread::desktopShutdownRequested())
 	{
 		if (SongManager::usbHostMidiDevConnectSigReceived)
 		{
@@ -513,22 +513,30 @@ std::map <int8_t, std::string> gMidiPortNameList =
 	//{(int8_t)IGNITE_INTERNAL_CLK, IGNITE_INTERNAL_CLK_NAME},
 };
 #include "tsf.h"
+#include "SoundFontProgram.h"
 /* init and load TSF and sound font and use the copy in all song,scene tracks */
 void SongManager::init_tsf()
 {
-	_songTSf = tsf_load_filename(SOUND_FONT_FILE);
-	tsf* sf = static_cast<tsf*>(_songTSf);
-	tsf_set_output(sf, TSF_MONO, INTERNAL_AUDIO_SAMPLE_RATE, 0);
-	tsf_set_max_voices(sf, 8);
-	tsf_channel_set_volume(sf, 0, 0.9f);
+    auto path = juce::SystemStats::getEnvironmentVariable("IGNITE_SOUNDFONT", "");
+    if (path.isEmpty())
+        path = juce::JSON::parse(desktopSettingsFile()).getProperty("SoundFont", "").toString();
+    if (path.isEmpty())
+    {
+        auto local = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getSiblingFile("Ignite.sf2");
+        path = local.existsAsFile() ? local.getFullPathName() : juce::String(SOUND_FONT_FILE);
+    }
+    std::string error;
+    if (!loadDesktopSoundFont(path.toStdString(), error))
+        juce::Logger::writeToLog("No usable SoundFont at " + path + "; internal sound disabled. " + error);
 }
 void* SongManager::get_tsf_instance() {
 	return (_songTSf);
 }
 class Track;
-SongManager::SongManager(IParamChangeListener* listener, IgniteEngine& model) : paramlistener(listener), engine(model), Module("SongManager", (moduleId_t)ModuleName::moduleSong, (unsigned int)SongParam::paramSongMax, listener), 
+SongManager::SongManager(IParamChangeListener* listener, IgniteEngine& model) : paramlistener(listener), engine(model), Module("SongManager", (moduleId_t)ModuleName::moduleSong, (unsigned int)SongParam::paramSongMax, listener)
 
 #ifdef ENABLE_THREADS_TO_PLAY
+        ,
 #ifndef __linux__
 		TrackPlayThread_0("TrackPlay", IgniteConstants::threadStackSize, osPriorityHigh),
 		TrackPlayThread_1("TrackPlay", IgniteConstants::threadStackSize, osPriorityHigh),
@@ -625,7 +633,7 @@ SongManager::SongManager(IParamChangeListener* listener, IgniteEngine& model) : 
 	openMidiInterfaces();
 	for (uint8_t i = 0; i < AUDITIONING_MAX_PORT; i++)
 	{
-		std::string TrackName = "AuditioningTrack" + i;
+		std::string TrackName = "AuditioningTrack" + std::to_string(i);
 		AuditioningTrack[i] = std::make_unique<Track>((int8_t)(0), TrackName, false, this);//Track to play internal sound for Midi in
 		AuditioningTrack[i]->AuditioningTrackInit();
 		isAuditioningTrackEnabled[i] = false;
@@ -661,6 +669,29 @@ SongManager::SongManager(IParamChangeListener* listener, IgniteEngine& model) : 
 
 SongManager::~SongManager()
 {
+}
+void SongManager::shutdownDesktop()
+{
+#ifdef _WIN32
+    if (dm != nullptr)
+    {
+        dm->removeAudioCallback(this);
+        dm->closeAudioDevice();
+    }
+    _clkOutTimerRunning = false;
+    _midiClkSlaveModeActive = false;
+
+#ifdef ENABLE_THREADS_TO_PLAY
+    TrackPlayThread_0.stopThread();
+    TrackPlayThread_1.stopThread();
+    TrackPlayThread_2.stopThread();
+    TrackPlayThread_3.stopThread();
+    TrackPlayThread_4.stopThread();
+    TrackPlayThread_5.stopThread();
+    TrackPlayThread_6.stopThread();
+    TrackPlayThread_7.stopThread();
+#endif
+#endif
 }
 
 bool SongManager::populateSongFromFileSystem(int32_t songId)
@@ -1020,10 +1051,10 @@ void SongManager::ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool 
 				}
 				break;
 
-			case SongParam::paramSaveAll:
-				if (GetUndoParamsInList().empty())
-					break;
-				//fallthrough
+            case SongParam::paramSaveAll:
+                // Scene/track edits need persistence even when song parameters are clean.
+                if (saveSong()) ClearUndoList();
+                break;
 			case SongParam::paramSaveSongCmd:
 				SaveData();
 				break;
@@ -1113,8 +1144,8 @@ void SongManager::ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool 
 				break;
 
 			case SongParam::paramStopRecordCmd:
-				setSystemState(KEY_PRESSED::RECORD_STOP_KEY);
 				SongManager::stopRecord();
+				setSystemState(KEY_PRESSED::RECORD_STOP_KEY);
 				SongManager::setRecordTrigger(false);
 				/* Send the record stop command if MMC send is Enabled*/
 				if (_settingsMidiMachineControlCnfg->_SettingsMidiMachineControlCnfgData.mmcSendStatus)
@@ -1202,12 +1233,9 @@ void SongManager::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	SongManager::saveSong();
-	ClearUndoList();
+	if (SongManager::saveSong()) ClearUndoList();
 }
-/** Saves current active song's data to file system.
- * Existing entry in FS is deleted and new entry is created
- */
+// Save the selected song ID and master volume.
 void SongManager::saveSongData(void)
 {
 	mainInfoData data;
@@ -1216,50 +1244,31 @@ void SongManager::saveSongData(void)
 	data.masterVolume = _masterVolume;
 	engine.fileHandler->updateMainInfo(data);
 }
-void SongManager::saveSong(void)
+bool SongManager::saveSong(void)
 {
-	if (activeSong == nullptr)
-	{
-		//TODO warn
-		return;
-	}
-	saveSongData();
-	//Delete existing entry in FS:
-	//Name of the song could have been changed by user and not yet saved to FS
-	//FS entries are identified by names, so remove the song entry from filesystem, using last-saved name
-	if (activeSong->songNameDirtyFlag == true)
-	{
-		std::string lastSavedSongName = (std::string)(GetDefaultDataFromList ((paramId_t)SongParam::paramSongName).get<std::string> ().c_str ());
-		if (lastSavedSongName != activeSong->getName ())
-		{
-			engine.get_fileHandler ()->DeleteSong (lastSavedSongName);
-		}
-		//If user did undo till last-saved name, we can use current name only
-		else
-		{
-			engine.get_fileHandler ()->DeleteSong (activeSong->getName ());
-		}
-	}
-	else
-	{
-		engine.get_fileHandler ()->DeleteSong (activeSong->getName ());
-	}
-
-	//filesystem save
-	engine.get_fileHandler()->CreateSong(*(activeSong->_songData));
-
-	activeSong->songNameDirtyFlag = false;
-
-	SetDefaultUndoListData();
-	SaveUsedbyLisrtDataForActiveSong();
+    auto stateLock = engine.lockDesktopState();
+    if (activeSong == nullptr) return false;
+    // Publish the replacement only after the entire new song has been written.
+    if (engine.get_fileHandler()->CreateSong(*activeSong->_songData) != FILE_OK) return false;
+    if (activeSong->songNameDirtyFlag)
+    {
+        const auto oldName = GetDefaultDataFromList((paramId_t)SongParam::paramSongName).get<std::string>();
+        if (oldName != activeSong->getName()) engine.get_fileHandler()->DeleteSong(oldName);
+    }
+    saveSongData();
+    activeSong->songNameDirtyFlag = false;
+    engine.sceneManager->markSaved();
+    SetDefaultUndoListData();
+    SaveUsedbyLisrtDataForActiveSong();
+    return true;
 }
 
-void SongManager::saveSong(CSong& song)
+bool SongManager::saveSong(CSong& song)
 {
-	//filesystem save
-	engine.get_fileHandler()->DeleteSong(song.getName());
-	engine.get_fileHandler()->CreateSong(*(song._songData));
-	SetDefaultUndoListData();
+    auto stateLock = engine.lockDesktopState();
+    if (engine.get_fileHandler()->CreateSong(*song._songData) != FILE_OK) return false;
+    SetDefaultUndoListData();
+    return true;
 }
 
 void SongManager::saveSongInfo (SongData& songInfo)
@@ -1533,6 +1542,7 @@ void SongManager::setName(std::string name)
 
 void SongManager::setTempo(float val)
 {
+	auto stateLock = engine.lockDesktopState();
 	if (activeSong == nullptr)
 	{
 		return;
@@ -2017,6 +2027,7 @@ void SongManager::removeSong(void)//id starts from 0
 
 void SongManager::playSong(int32_t sceneId)
 {
+	auto stateLock = engine.lockDesktopState();
 	if (activeSong == nullptr)
 	{
 		//TODO warn
@@ -2080,6 +2091,7 @@ void SongManager::playSong(int32_t sceneId)
 
 void SongManager::initPlayScene(int32_t sceneId)
 {
+	auto stateLock = engine.lockDesktopState();
 	uint64_t muteStateOfTracksToUse = 0xFFFFFFFFFFFFFFFF;
 	bool muteHoldInEffect = false;
 
@@ -2182,6 +2194,7 @@ void SongManager::initPlayScene(int32_t sceneId)
 
 void SongManager::pauseSong()
 {
+	auto stateLock = engine.lockDesktopState();
 	if (_isSongPlaying == true)
 	{
 #ifdef __linux__
@@ -2222,6 +2235,7 @@ void SongManager::pauseSong()
 
 void SongManager::stopSong()
 {
+	auto stateLock = engine.lockDesktopState();
 	if ((_isSongPlaying == true) || (_isSongPaused == true))
 	{
 
@@ -3063,6 +3077,7 @@ void SongManager::modifySongNameIfDuplicate(std::string& name)
 }
 void SongManager::pulse(uint16_t pulse)
 {
+	auto stateLock = engine.lockDesktopState();
 	if (_pulseHandlingInProgress.load() == true)
 	{
 		return;//Not completed prev req
@@ -3124,7 +3139,7 @@ void SongManager::pulse(uint16_t pulse)
 		TrackAndPosition data = { &track, sceneBarId, sceneStepId };
 		listTohandle.push_back(data);
 
-		if ((count + 1) % 8 == 0)
+		if ((count + 1) % 8 == 0 || count + 1 == static_cast<int>(trackList.size()))
 		{
 			int queueIndex = count / 8; //each Q has 8 track to handle
 			switch (queueIndex)
@@ -3261,6 +3276,7 @@ void IgniteMidi::handleIncomingMidiMessage (MidiInput* source, const MidiMessage
 
 void SongManager::handleMcuSpecialKey(uint8_t KeyId, uint8_t value)
 {
+	auto stateLock = engine.lockDesktopState();
 	switch ((paramId_t)KeyId)
 	{
 	case (paramId_t)FrontPannelParam::paramKey_INTERNALSOUNDS:
@@ -3282,6 +3298,7 @@ void SongManager::handleMcuSpecialKey(uint8_t KeyId, uint8_t value)
  */
 void SongManager::handleIncomingMcuMidiMessage (String msgPortName, const MidiMessage& message)
 {
+	auto stateLock = engine.lockDesktopState();
 	handleMidiThru(message, msgPortName.toStdString());
 	//check if src message port is enabled for midi remote control
 	if (message.isProgramChange() && midiRemoteControlEnabled (msgPortName) == true)
@@ -3298,6 +3315,7 @@ void SongManager::handleIncomingMcuMidiMessage (String msgPortName, const MidiMe
 
 void SongManager::handleInMidiMessage(const MidiMessage& message, const std::string portName, bool isSendMidiThru)
 {
+	auto stateLock = engine.lockDesktopState();
 	if(isSendMidiThru)
 		handleMidiThru(message, portName);
 
@@ -3377,7 +3395,7 @@ void SongManager::handleInMidiMessage(const MidiMessage& message, const std::str
 			for (auto it = trackIdList.first; it != trackIdList.second; ++it)
 			{
 				auto track = getPlayTrackFromId(it->second);
-				if ((track != nullptr) && (track->_trackData->trackMute == false))
+				if ((track != nullptr) && (track->_trackData->trackMute == false) && track->_trackData->trackRecordEnable)
 				{
 					track->liveRecord(message);
 					patternRecMap[track->getTrackMainPattern()->getName()] = track->getTrackMainPattern();
@@ -3498,32 +3516,32 @@ void SongManager::initRecord(void)
 	}// task list loop
 
 	//set record events filter at start of record
-	if (_recordSetting.count ((paramId_t)SettingsRecordCnfgParam::SettingRecordAfterTouchEventParam != 0))
+	if (_recordSetting.count((paramId_t)SettingsRecordCnfgParam::SettingRecordAfterTouchEventParam) != 0)
 	{
 		_recordEventFilter = (_recordSetting [(paramId_t)SettingsRecordCnfgParam::SettingRecordAfterTouchEventParam] == 0) ? (_recordEventFilter & ~ ( (uint16_t)RecordEvents::AfterTouchCP)) : _recordEventFilter | ( (uint16_t)RecordEvents::AfterTouchCP);
 	}
 
-	if (_recordSetting.count ((paramId_t)SettingsRecordCnfgParam::SettingRecordMidiCCEventParam != 0))
+	if (_recordSetting.count((paramId_t)SettingsRecordCnfgParam::SettingRecordMidiCCEventParam) != 0)
 	{
 		_recordEventFilter = (_recordSetting[(paramId_t)SettingsRecordCnfgParam::SettingRecordMidiCCEventParam] == 0) ? (_recordEventFilter & ~( (uint16_t)RecordEvents::MidiCC)) : (_recordEventFilter | ( (uint16_t)RecordEvents::MidiCC));
 	}
 
-	if (_recordSetting.count ((paramId_t)SettingsRecordCnfgParam::SettingRecordNoteEventParam != 0))
+	if (_recordSetting.count((paramId_t)SettingsRecordCnfgParam::SettingRecordNoteEventParam) != 0)
 	{
 		_recordEventFilter = (_recordSetting[(paramId_t)SettingsRecordCnfgParam::SettingRecordNoteEventParam] == 0) ? (_recordEventFilter & ~( (uint16_t)RecordEvents::Note)) : (_recordEventFilter | ( (uint16_t)RecordEvents::Note));
 	}
 
-	if (_recordSetting.count ((paramId_t)SettingsRecordCnfgParam::SettingRecordPgmChangeEventParam != 0))
+	if (_recordSetting.count((paramId_t)SettingsRecordCnfgParam::SettingRecordPgmChangeEventParam) != 0)
 	{
 		_recordEventFilter = (_recordSetting[(paramId_t)SettingsRecordCnfgParam::SettingRecordPgmChangeEventParam] == 0) ? (_recordEventFilter & ~( (uint16_t)RecordEvents::ProgramChange)) : (_recordEventFilter | ( (uint16_t)RecordEvents::ProgramChange));
 	}
 
-	if (_recordSetting.count ((paramId_t)SettingsRecordCnfgParam::SettingRecordPitchBendEventParam != 0))
+	if (_recordSetting.count((paramId_t)SettingsRecordCnfgParam::SettingRecordPitchBendEventParam) != 0)
 	{
 		_recordEventFilter = (_recordSetting[(paramId_t)SettingsRecordCnfgParam::SettingRecordPitchBendEventParam] == 0) ? (_recordEventFilter & ~( (uint16_t)RecordEvents::PitchBend)) : (_recordEventFilter | ((uint16_t)RecordEvents::PitchBend));
 	}
 
-	if (_recordSetting.count ((paramId_t)SettingsRecordCnfgParam::SettingRecordPolyPEventParam != 0))
+	if (_recordSetting.count((paramId_t)SettingsRecordCnfgParam::SettingRecordPolyPEventParam) != 0)
 	{
 		_recordEventFilter = (_recordSetting[(paramId_t)SettingsRecordCnfgParam::SettingRecordPolyPEventParam] == 0) ? (_recordEventFilter & ~((uint16_t)RecordEvents::AfterTouchPP)) : (_recordEventFilter | ((uint16_t)RecordEvents::AfterTouchPP));
 	}
@@ -3568,8 +3586,11 @@ void SongManager::startRecord(const MidiMessage& message)
 /* Stop the record function */
 void SongManager::stopRecord(void)
 {
+    auto stateLock = engine.lockDesktopState();
 	if (_isRecording == true)
 	{
+        if (_state == SYSTEM_STATE::LIVE_RECORD && activeSong && activeSong->playScene)
+            for (auto& track : activeSong->playScene->_sceneData->trackList) track.recordStepEvents();
 		_isRecording = false;
 		_recordTrigger = false;
 
@@ -4240,6 +4261,7 @@ bool SongManager::midiRemoteControlEnabled (String msgPortName)
 
 void SongManager::handleMidiRemoteControlMessage (const MidiMessage& message)
 {
+	auto stateLock = engine.lockDesktopState();
 	//check if src message channel is enabled for midi remote control
 	auto remoteControlEnabledChannel = _settingsRemoteControlCnfg->_SettingsRemoteControlCnfgData.RemoteControlMidiChannel;
 	auto msgChannel = message.getChannel ();
@@ -4289,6 +4311,7 @@ bool SongManager::midiMachineControlEnabled (String msgPortName)
 
 void SongManager::handleMidiMachineControlMessage (const MidiMessage& message)
 {
+	auto stateLock = engine.lockDesktopState();
 	/* Extract the Device Id(3rd byte) from the Midi Machine Message*/
 	auto rawData = message.getRawData ();
 	uint8_t deviceId = rawData[2];
@@ -4391,6 +4414,7 @@ bool SongManager::midiTransposeControlEnabled (String msgPortName)
 
 void SongManager::handleMidiTransposeControlMessage (const MidiMessage& message)
 {
+	auto stateLock = engine.lockDesktopState();
 	//check if src message channel is enabled for midi remote control
 	auto transposeControlEnabledChannel = _settingsTransposeControlCnfg->_transposeControlCnfgData.transposeControlMidiChannel;
 
@@ -4860,6 +4884,10 @@ void SongManager::openMidiInterfaces (void)
 		midiDevList.emplace (id, midiDev);
 	}
 
+#ifdef _WIN32
+    for (int port = int(midiDataIOPorts::usbHostMidi1); port <= int(midiDataIOPorts::usbHostMidi5); ++port)
+        gMidiPortNameList[int8_t(port)] = "Desktop USB host " + std::to_string(port - int(midiDataIOPorts::usbHostMidi1) + 1);
+#endif
 	// OUTPUT INTERFACE
 	auto availableOutDevices = MidiOutput::getAvailableDevices ();
 	for (auto& midiOutDevice : availableOutDevices)
@@ -5025,12 +5053,33 @@ void SongManager::setUpPlatformAudio(void)
 
 void SongManager::audioDeviceAboutToStart(AudioIODevice* device)
 {
-
+    const auto rate = device->getCurrentSampleRate();
+    desktopHostSampleRate = rate;
+    audioResampler.setResamplingRatio(double(INTERNAL_AUDIO_SAMPLE_RATE) / rate);
+    audioResampler.prepareToPlay(device->getCurrentBufferSizeSamples(), rate);
+	juce::Logger::writeToLog("Audio device: " + device->getName() + ", " +
+		juce::String(device->getCurrentSampleRate()) + " Hz, block " + juce::String(device->getCurrentBufferSizeSamples()));
 }
 
 void SongManager::audioDeviceStopped()
 {
+    audioResampler.releaseResources();
+}
 
+void SongManager::prepareToPlay(int, double) { audioBlockAdapter.reset(); }
+void SongManager::releaseResources() {}
+void SongManager::getNextAudioBlock(const juce::AudioSourceChannelInfo& info)
+{
+    float* mono = info.buffer->getWritePointer(0, info.startSample);
+    audioBlockAdapter.process(&mono, 1, info.numSamples, [this](float* block)
+    {
+#ifdef USE_INTERNAL_20MS_TIMER
+        readFromBuffer(block);
+#else
+        renderTracksAndMix(block);
+#endif
+    });
+    desktopSourceSamples += info.numSamples;
 }
 
 
@@ -5049,56 +5098,55 @@ void SongManager::audioDeviceIOCallbackWithContext(const float** inputChannelDat
 #endif
 {
 
-	juce::FloatVectorOperations::disableDenormalisedNumberSupport();
-
-#ifdef USE_INTERNAL_20MS_TIMER
-	readFromBuffer((AudioDataType *)outputChannelData[0]);
-#else
-	AudioDataType twentyMsBufferMono[INTERNAL_AUDIO_20MS_BLOCK_SIZE] = {0};
-	renderTracksAndMix(twentyMsBufferMono);
-	memcpy(outputChannelData[0], twentyMsBufferMono, INTERNAL_AUDIO_20MS_BLOCK_SIZE * sizeof(AudioDataType));
-#endif
-
-#ifdef LOG_PCM_TO_FILE
-	logToFile_2(outputChannelData[0], INTERNAL_AUDIO_20MS_BLOCK_SIZE*sizeof(AudioDataType));
-#endif
-
-	/* We have initialsed juce in stereo out mode, so fill the second channel*/
-	if (deviceOutputChannels > 1)
-	{
-		for (int i = 1; i < deviceOutputChannels; ++i)
-		{
-			memcpy(outputChannelData[i], outputChannelData[0], INTERNAL_AUDIO_20MS_BLOCK_SIZE*sizeof(AudioDataType));
-		}
-	}
-
+    juce::ScopedNoDenormals noDenormals;
+    float* mono = nullptr;
+    for (int ch = 0; ch < deviceOutputChannels && mono == nullptr; ++ch) mono = outputChannelData[ch];
+    if (mono == nullptr || numSamples <= 0) return;
+    juce::AudioBuffer<float> output(&mono, 1, numSamples);
+    audioResampler.getNextAudioBlock({&output, 0, numSamples});
+    for (int ch = 0; ch < deviceOutputChannels; ++ch)
+        if (outputChannelData[ch] != nullptr && outputChannelData[ch] != mono)
+            std::copy_n(mono, numSamples, outputChannelData[ch]);
+    ++desktopAudioCallbacks;
+    desktopOutputSamples += numSamples;
+    float peak = desktopAudioPeak.load(std::memory_order_relaxed);
+    for (int i = 0; i < numSamples; ++i) peak = std::max(peak, std::abs(mono[i]));
+    desktopAudioPeak.store(peak, std::memory_order_relaxed);
 }
 
 void SongManager::startJuceAudioCallback (void)
 {
 	if (_isAudioCallbackEnabled)
 		return;
-	_isAudioCallbackEnabled = true;
-
+	if (dm == nullptr)
+	{
+		juce::Logger::writeToLog("Audio device manager is not ready; playback can be retried.");
+		return;
+	}
 	juce::AudioDeviceManager::AudioDeviceSetup setup;
 	setup.sampleRate = (double)INTERNAL_AUDIO_SAMPLE_RATE;
 	setup.bufferSize = (int)INTERNAL_AUDIO_20MS_BLOCK_SIZE;
-	if(dm != nullptr)
-		dm->initialise(0, 2, nullptr, true, {}, &setup);// no input, stereo out,...
+    auto saved = juce::JSON::parse(desktopSettingsFile()).getProperty("AudioDevice", "").toString();
+    auto xml = juce::XmlDocument::parse(saved);
+    const auto error = dm->initialise(0, 2, xml.get(), true, {}, xml ? nullptr : &setup);
+	auto* device = dm->getCurrentAudioDevice();
+	_isAudioCallbackEnabled = error.isEmpty() && device != nullptr && device->isOpen();
+	if (!_isAudioCallbackEnabled)
+		juce::Logger::writeToLog("Cannot start audio: " + (error.isEmpty() ? juce::String("no open output device") : error));
 }
 
 void SongManager::stopJuceAudioCallback (void)
 {
 	if (!_isAudioCallbackEnabled)
 		return;
-	//_isAudioCallbackEnabled = false;
-	//if (dm != nullptr)
-		//dm->closeAudioDevice();
+	_isAudioCallbackEnabled = false;
+	if (dm != nullptr) dm->closeAudioDevice();
 }
 
 /* Handles play-time internal sound program change, done at instrument level*/
 void SongManager::handleInternalPgmChange (int32_t instrId, int programId)
 {
+	auto stateLock = engine.lockDesktopState();
 	Scene* playScene;
 
 	(void) programId;
@@ -5119,6 +5167,7 @@ void SongManager::handleInternalPgmChange (int32_t instrId, int programId)
 }
 void SongManager::handleMidiSettingChange(int32_t instrId)
 {
+	auto stateLock = engine.lockDesktopState();
 	Scene* playScene;
 	if ((activeSong != nullptr) && ((playScene = activeSong->getPlayScene()) != nullptr))
 	{
@@ -5463,6 +5512,14 @@ void SongManager::stopAudioProcessingTimer(void)
 #ifdef ENABLE_PARALLEL_EXE
 void SongManager::renderTracksAndMix(AudioDataType* buffer)
 {
+#ifdef _WIN32
+    std::unique_lock<std::recursive_mutex> stateLock(engine.stateMutex, std::try_to_lock);
+    if (!stateLock.owns_lock())
+    {
+        std::fill_n(buffer, INTERNAL_AUDIO_20MS_BLOCK_SIZE, AudioDataType{});
+        return;
+    }
+#endif
 #ifdef USE_INTERNAL_EFFECTS
 	juce::AudioBuffer<float> audioOutBuff(&buffer, 1, INTERNAL_AUDIO_20MS_BLOCK_SIZE);
 	audioOutBuff.clear();
@@ -5513,10 +5570,19 @@ void SongManager::renderTracksAndMix(AudioDataType* buffer)
 			}
 		}
 	}
+    renderDesktopMonitor(buffer);
 }
 #else
 void SongManager::renderTracksAndMix(AudioDataType* buffer)
 {
+#ifdef _WIN32
+    std::unique_lock<std::recursive_mutex> stateLock(engine.stateMutex, std::try_to_lock);
+    if (!stateLock.owns_lock())
+    {
+        std::fill_n(buffer, INTERNAL_AUDIO_20MS_BLOCK_SIZE, AudioDataType{});
+        return;
+    }
+#endif
 #ifdef USE_INTERNAL_EFFECTS
 	juce::AudioBuffer<float>audioOutBuff(&buffer, 1, INTERNAL_AUDIO_20MS_BLOCK_SIZE);
 	audioOutBuff.clear();
@@ -5557,6 +5623,7 @@ void SongManager::renderTracksAndMix(AudioDataType* buffer)
 			}
 		}
 	}
+    renderDesktopMonitor(buffer);
 }
 #endif//ENABLE_PARALLEL_EXE
 
@@ -5581,6 +5648,7 @@ void SongManager::handleMidiClkIn(float freqHz)
 
 void SongManager::handleSyncIn(float frequencyHz)
 {
+	auto stateLock = engine.lockDesktopState();
 	//check if it is in clock slave mode(external sync-in clock source)
 	if (engine.settingsMidiClkCnfg->isClkInFromSyncPort())
 	{
@@ -5695,6 +5763,7 @@ void SongManager::handleCommandMessage(int id)
 		dm = new(juce::AudioDeviceManager);
 		setUpPlatformAudio();
 	}
+    if (id == 1) startJuceAudioCallback();
 }
 
 void SongManager::init(void)
@@ -5827,9 +5896,9 @@ void SongManager::TrackPlayThreadFunction_0(void)
 {
 	TrackPlayThread_0.delayMs(1000);
 	std::list <TrackAndPosition> trackListToHandle;
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		TrackPlayQ_0.get(trackListToHandle, TimeOut::kWaitForever);
+		if (!TrackPlayQ_0.get(trackListToHandle, TimeOut::kWaitForever)) break;
 		if (trackListToHandle.size())
 		{
 			for (auto& it : trackListToHandle)
@@ -5866,9 +5935,9 @@ void SongManager::TrackPlayThreadFunction_1(void)
 {
 	TrackPlayThread_1.delayMs(1000);
 	std::list <TrackAndPosition> trackListToHandle;
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		TrackPlayQ_1.get(trackListToHandle, TimeOut::kWaitForever);
+		if (!TrackPlayQ_1.get(trackListToHandle, TimeOut::kWaitForever)) break;
 		if (trackListToHandle.size())
 		{
 			for(auto& it : trackListToHandle)
@@ -5905,9 +5974,9 @@ void SongManager::TrackPlayThreadFunction_2(void)
 {
 	TrackPlayThread_2.delayMs(1000);
 	std::list <TrackAndPosition> trackListToHandle;
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		TrackPlayQ_2.get(trackListToHandle, TimeOut::kWaitForever);
+		if (!TrackPlayQ_2.get(trackListToHandle, TimeOut::kWaitForever)) break;
 		if (trackListToHandle.size())
 		{
 			for (auto& it : trackListToHandle)
@@ -5944,9 +6013,9 @@ void SongManager::TrackPlayThreadFunction_3(void)
 {
 	TrackPlayThread_3.delayMs(1000);
 	std::list <TrackAndPosition> trackListToHandle;
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		TrackPlayQ_3.get(trackListToHandle, TimeOut::kWaitForever);
+		if (!TrackPlayQ_3.get(trackListToHandle, TimeOut::kWaitForever)) break;
 		if (trackListToHandle.size())
 		{
 			for (auto& it : trackListToHandle)
@@ -5983,9 +6052,9 @@ void SongManager::TrackPlayThreadFunction_4(void)
 {
 	TrackPlayThread_4.delayMs(1000);
 	std::list <TrackAndPosition> trackListToHandle;
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		TrackPlayQ_4.get(trackListToHandle, TimeOut::kWaitForever);
+		if (!TrackPlayQ_4.get(trackListToHandle, TimeOut::kWaitForever)) break;
 		if (trackListToHandle.size())
 		{
 			for (auto& it : trackListToHandle)
@@ -6022,9 +6091,9 @@ void SongManager::TrackPlayThreadFunction_5(void)
 {
 	TrackPlayThread_5.delayMs(1000);
 	std::list <TrackAndPosition> trackListToHandle;
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		TrackPlayQ_5.get(trackListToHandle, TimeOut::kWaitForever);
+		if (!TrackPlayQ_5.get(trackListToHandle, TimeOut::kWaitForever)) break;
 		if (trackListToHandle.size())
 		{
 			for (auto& it : trackListToHandle)
@@ -6061,9 +6130,9 @@ void SongManager::TrackPlayThreadFunction_6(void)
 {
 	TrackPlayThread_6.delayMs(1000);
 	std::list <TrackAndPosition> trackListToHandle;
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		TrackPlayQ_6.get(trackListToHandle, TimeOut::kWaitForever);
+		if (!TrackPlayQ_6.get(trackListToHandle, TimeOut::kWaitForever)) break;
 		if (trackListToHandle.size())
 		{
 			for (auto& it : trackListToHandle)
@@ -6100,9 +6169,9 @@ void SongManager::TrackPlayThreadFunction_7(void)
 {
 	TrackPlayThread_7.delayMs(1000);
 	std::list <TrackAndPosition> trackListToHandle;
-	while (true)
+	while (!CThread::desktopShutdownRequested())
 	{
-		TrackPlayQ_7.get(trackListToHandle, TimeOut::kWaitForever);
+		if (!TrackPlayQ_7.get(trackListToHandle, TimeOut::kWaitForever)) break;
 		if (trackListToHandle.size())
 		{
 			for (auto& it : trackListToHandle)
@@ -6117,6 +6186,7 @@ void SongManager::TrackPlayThreadFunction_7(void)
 
 void SongManager::setSystemState(KEY_PRESSED key)
 {
+	auto stateLock = engine.lockDesktopState();
 	MidiMessage msg;
 
 	switch (key)
@@ -6492,6 +6562,10 @@ void SongManager::checkAndOpenMidiHostDevice(void)
 
 void SongManager::sendMidiExternal (MidiMessage msg, uint8_t port)
 {
+    auto stateLock = engine.lockDesktopState();
+#ifdef _WIN32
+    if (desktopMidiOutput && desktopMidiOutput(msg, port)) return;
+#endif
 	//Imx handles the USB-MIDIs, Virtual-MIDI(test only)
 
 	// DIN MIDI 0 - 4 -> MCU
@@ -7069,4 +7143,132 @@ uint16_t SongManager::getPulsesPerStep(TimeBase tb)
 {
 	auto divider = getTickDivider (tb);
 	return static_cast<uint16_t> ((SET_PPQN / divider));
+}
+
+juce::File SongManager::desktopSettingsFile()
+{
+    auto root = juce::SystemStats::getEnvironmentVariable("IGNITE_DATA_DIR", "");
+    if (root.isEmpty()) root = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BehringerIgnite").getFullPathName();
+    return juce::File(root).getChildFile("desktop.json");
+}
+std::vector<SongManager::SoundFontPreset> SongManager::getDesktopSoundFontPresets()
+{
+    auto lock = engine.lockDesktopState();
+    std::vector<SoundFontPreset> presets;
+    auto* font = static_cast<tsf*>(_songTSf);
+    if (font)
+        for (int index = 0; index < tsf_get_presetcount(font); ++index)
+            presets.push_back({tsf_get_presetbank(font, index), tsf_get_presetnumber(font, index), index, tsf_get_presetname(font, index)});
+    return presets;
+}
+std::string SongManager::desktopPresetName(int value)
+{
+    auto lock = engine.lockDesktopState();
+    if (!SoundFontProgram::isCustom(value)) return {};
+    auto* font = static_cast<tsf*>(_songTSf);
+    const char* name = font ? tsf_bank_get_presetname(font, SoundFontProgram::bank(value), SoundFontProgram::program(value)) : nullptr;
+    return name ? name : "Preset unavailable in this bank";
+}
+bool SongManager::loadDesktopSoundFont(const std::string& path, std::string& error)
+{
+    juce::FileInputStream input{juce::File(juce::String::fromUTF8(path.c_str()))};
+    if (!input.openedOk()) { error = "Cannot open the bank file."; return false; }
+    tsf_stream stream{};
+    stream.data = &input;
+    stream.read = [](void* data, void* out, unsigned int count) -> int
+        { return static_cast<juce::FileInputStream*>(data)->read(out, int(count)); };
+    stream.skip = [](void* data, unsigned int count) -> int
+        { auto& in = *static_cast<juce::FileInputStream*>(data); return in.setPosition(in.getPosition() + count) ? 1 : 0; };
+    auto* replacement = tsf_load(&stream);
+    if (!replacement || tsf_get_presetcount(replacement) == 0)
+    {
+        tsf_close(replacement);
+        error = "The file contains no usable SoundFont presets.";
+        return false;
+    }
+    tsf_set_output(replacement, TSF_MONO, INTERNAL_AUDIO_SAMPLE_RATE, 0);
+    tsf_set_max_voices(replacement, 8);
+    auto lock = engine.lockDesktopState();
+    if (engine.songManager == this)
+    {
+        stopSong();
+        setSystemState(KEY_PRESSED::STOP_KEY);
+        stopJuceAudioCallback();
+    }
+    if (activeSong)
+        for (auto& scene : activeSong->_songData->sceneList)
+            for (auto& track : scene._sceneData->trackList) track.unloadDesktopSoundFont();
+    for (auto& track : AuditioningTrack) if (track) track->unloadDesktopSoundFont();
+    tsf_close(static_cast<tsf*>(_songTSf));
+    _songTSf = replacement;
+    desktopSoundFontPath = path;
+    for (auto& track : AuditioningTrack) if (track) track->AuditioningTrackInit();
+    error.clear();
+    juce::Logger::writeToLog("SoundFont loaded: " + juce::String::fromUTF8(path.c_str()) + " (" + juce::String(tsf_get_presetcount(replacement)) + " presets)");
+    return true;
+}
+void SongManager::receiveDesktopMidi(uint8_t port, const MidiMessage& message)
+{
+    auto lock = engine.lockDesktopState();
+    if (CThread::desktopShutdownRequested() || gMidiPortNameList.find(int8_t(port)) == gMidiPortNameList.end()) return;
+    ++desktopMidiReceived;
+    const auto name = getPortNameFromId(int8_t(port));
+    if (midiRemoteControlEnabled(name)) handleMidiRemoteControlMessage(message);
+    else if (midiTransposeControlEnabled(name)) handleMidiTransposeControlMessage(message);
+    else if (midiMachineControlEnabled(name)) handleMidiMachineControlMessage(message);
+    else handleInMidiMessage(message, name);
+    if (desktopMonitorEnabled && !_isAuditioningOn && activeSong && activeSong->editScene && activeSong->editScene->editTrack)
+    {
+        auto* track = activeSong->editScene->editTrack;
+        auto* input = track->getTrackRxInstrument();
+        auto* output = track->getTrackTxInstrument();
+        if (input && output && output->getInternalSound() && input->getMidiPort() == int8_t(port) &&
+            message.getChannel() == input->getMidiChannel() + 1)
+        {
+            track->prepareDesktopMonitor();
+            sendMidiMessageInternal(message, track);
+            if (message.isNoteOn()) postCommandMessage(1);
+        }
+    }
+}
+void SongManager::renderDesktopMonitor(AudioDataType* buffer)
+{
+#ifdef _WIN32
+    if (!desktopMonitorEnabled || _isAuditioningOn || _state == SYSTEM_STATE::PLAY || _state == SYSTEM_STATE::LIVE_RECORD ||
+        !activeSong || !activeSong->editScene || !activeSong->editScene->editTrack) return;
+    auto* track = activeSong->editScene->editTrack;
+    if (activeSong->playScene == activeSong->editScene) return; // already rendered by the normal mix
+    if (!track->getTrackTxInstrument() || !track->getTrackTxInstrument()->getInternalSound()) return;
+    track->sfSynthesizeAudio();
+    juce::AudioBuffer<float> output(&buffer, 1, INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+    output.addFrom(0, 0, track->audioBuff, 0, 0, INTERNAL_AUDIO_20MS_BLOCK_SIZE, _masterVolume);
+#endif
+}
+void SongManager::desktopPanic()
+{
+    auto lock = engine.lockDesktopState();
+    if (activeSong)
+        for (auto& scene : activeSong->_songData->sceneList)
+            for (auto& track : scene._sceneData->trackList) track.sfReset();
+    for (auto& track : AuditioningTrack) if (track) track->sfReset();
+}
+bool SongManager::desktopPreviewPreset(int presetIndex)
+{
+    auto lock = engine.lockDesktopState();
+    if (_state != SYSTEM_STATE::IDLE || !_songTSf || presetIndex < 0 ||
+        presetIndex >= tsf_get_presetcount(static_cast<tsf*>(_songTSf))) return false;
+    setAuditioningPreset(0, presetIndex);
+    setAuditioningState(true);
+    HandleMidiInAuditioning(0, juce::MidiMessage::noteOn(1, 60, uint8_t(100)));
+    return true;
+}
+void SongManager::desktopPreviewNoteOff()
+{
+    auto lock = engine.lockDesktopState();
+    HandleMidiInAuditioning(0, juce::MidiMessage::noteOff(1, 60));
+}
+void SongManager::desktopStopPreview()
+{
+    auto lock = engine.lockDesktopState();
+    setAuditioningState(false);
 }

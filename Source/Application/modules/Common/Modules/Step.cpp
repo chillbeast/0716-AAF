@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <assert.h>
+#include <memory>
 #include "Common/Modules/Step.h"
 
 using namespace Ignite;
@@ -38,6 +39,7 @@ Step::Step (const Step& src)
 
 Step::Step (Pattern* pat, int16_t id, uint8_t note, float length, uint8_t velocity, uint8_t delay)
 {
+	_pattern = pat;
 	_stepData = new (StepData);
 	*_stepData = { 0 };
 	_stepData->stepId = id;
@@ -45,9 +47,23 @@ Step::Step (Pattern* pat, int16_t id, uint8_t note, float length, uint8_t veloci
 
 Step::Step (Pattern* pat, StepData& stepData)
 {
+	_pattern = pat;
 	_stepData = new (StepData);
 	*_stepData = { 0 };
 	*_stepData = stepData;
+}
+Step::~Step() { delete _stepData; }
+Step& Step::operator=(const Step& source)
+{
+    if (this != &source)
+    {
+        auto data = std::make_unique<StepData>(*source._stepData);
+        delete _stepData;
+        _stepData = data.release();
+        _pattern = source._pattern;
+        isUpdating = false;
+    }
+    return *this;
 }
 
 /*
