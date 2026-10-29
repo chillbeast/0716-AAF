@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 #include "DesktopMediaSnapshot.h"
+#include "DesktopMidiPorts.h"
 #include <deque>
 
 namespace IgniteDesktop::Media
@@ -10,6 +11,8 @@ namespace IgniteDesktop::Media
         if(!message.isMetaEvent())return;
         const int type=message.getMetaEventType(),length=message.getMetaEventLength();
         if(type==0x51 && length!=3)throw std::runtime_error("MIDI contains an invalid tempo event.");
+        if(type==0x51 && message.getTempoSecondsPerQuarterNote()<=0)throw std::runtime_error("MIDI contains a zero tempo.");
+        if(type==0x21 && length!=1)throw std::runtime_error("MIDI contains an invalid port event.");
         if(type==0x58 && (length!=4 || message.getMetaEventData()[0]==0 || message.getMetaEventData()[1]>5))
             throw std::runtime_error("MIDI contains an invalid or unsupported time signature.");
     }
@@ -22,7 +25,7 @@ namespace IgniteDesktop::Media
         {
             if(file.getSize()>32*1024*1024)throw std::runtime_error("MIDI file exceeds the 32 MB limit.");
             auto stream=file.createInputStream();juce::MidiFile midi;
-            if(!stream || !midi.readFrom(*stream))throw std::runtime_error("Cannot read this MIDI file.");
+            if(!stream || !midi.readFrom(*stream,false))throw std::runtime_error("Cannot read this MIDI file.");
             if(midi.getTimeFormat()<=0)throw std::runtime_error("Import requires MIDI with PPQ timing, rather than SMPTE timing.");
             MidiImport result;constexpr int chunkTicks=16*16*12;
             struct Note{int pitch,velocity,start,end;};

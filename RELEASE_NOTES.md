@@ -1,3 +1,18 @@
+# IGNITE Desktop v0.3.3-desktop.7
+
+MIDI sustain, channel-mode and routing fidelity fixes.
+
+- Pedal-held notes are recreated across imported scene boundaries until their pedal release. Physical key releases retain their original timing. Envelopes still retrigger at scene changes.
+- All Notes Off and channel-mode note releases respect sustain. All Sound Off and Reset Controllers release pedal-held voices appropriately. Later physical note-offs do not revive terminated notes in another scene.
+- RPN/NRPN selector/data-entry sequences retain their order across scenes, including pitch-bend range, deselection and Reset Controllers behavior.
+- External-only MIDI parts retain logical port metadata even without program initialization. Unrouted internal parts use USB device 1 metadata. All 16 MIDI routes retain their actual firmware IDs (DIN 0-4, USB 13-23); CV IDs 5-12 and unsupported imported ports produce a remapping error instead of silent rerouting.
+- Clip import preserves overlapping same-pitch note pairing. Both import paths reject zero tempo and malformed port metadata before adding patterns or songs.
+- Updated manual and audio/MIDI regression coverage. Re-import earlier MIDI sources to apply the new note conversion.
+
+Release/Debug/AddressSanitizer builds succeed. The MIDI song suite passes 131 checks and media passes 93 in Release and ASan, alongside the sound, correctness, feature, layout and device/recovery regressions. Native checks remain 84 Release/ASan and 85 Debug; Release font/no-font smoke and ASan no-font workflow pass. Counts include repeated setup. Final sanitizer runs produce no address-error report.
+
+Download **Ignite-Desktop-v0.3.3-desktop.7-windows-x64.zip**, extract it and run **Ignite.exe**. The illustrated manual and corresponding source are included; supply your own SF2 files. Scene boundaries still round to sixteenths; release/effect tails are not continuous across scenes. SysEx, complete SF2 modulators, an Ignite VST and physical MIDI/CV/clock qualification remain outside this community preview.
+
 # IGNITE Desktop v0.3.3-desktop.6
 
 Import arranged MIDI songs with tempo and meter changes.

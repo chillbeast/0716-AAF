@@ -38,6 +38,7 @@ public:
             check(plan.patterns[1][0].BarDataList.at(0).StepDataList.at(0).auxList.size()>=3,"controller and pitch state is restored at a scene boundary");
             check(plan.patterns[2][0].patternLastStepId==12,"partial pattern bars keep their exact active length");
             invalidFixtures();
+            fidelityFixtures();
             const auto count=engine.songManager->songInfoList.size();
             engine.desktopEdited("song");bool refused=false;try{plan.apply(engine);}catch(...){refused=true;}
             check(refused && engine.songManager->songInfoList.size()==count,"song import protects unsaved work without creating partial entries");
@@ -175,9 +176,120 @@ private:
                     juce::AudioBuffer<float> block(2,48000);reader->read(&block,0,48000,0,true,true);
                     check(block.getMagnitude(0,48000)>0.0001f,"imported MIDI produces audible internal audio");
                 }
+                pedalAudio();
+            });
+        }
+        catch(const std::exception& error){check(false,juce::String(error.what()));finish();}
+    }
+    void fidelityFixtures()
+    {
+        using namespace IgniteDesktop::Media;
+        auto save=[&](const juce::MidiMessageSequence& sequence,const char* name)
+        {
+            juce::MidiFile midi;midi.setTicksPerQuarterNote(480);juce::MidiMessageSequence conductor;
+            conductor.addEvent(juce::MidiMessage::tempoMetaEvent(500000),0);
+            conductor.addEvent(juce::MidiMessage::textMetaEvent(6,"Continuation"),4*480);
+            conductor.addEvent(juce::MidiMessage::endOfTrack(),8*480);midi.addTrack(conductor);midi.addTrack(sequence);
+            const auto file=root.getChildFile(name);{auto output=file.createOutputStream();midi.writeTo(*output,1);}return file;
+        };
+        juce::MidiMessageSequence pedal;
+        pedal.addEvent(juce::MidiMessage::controllerEvent(1,64,127),0);
+        pedal.addEvent(juce::MidiMessage::noteOn(1,60,uint8_t(100)),0);
+        pedal.addEvent(juce::MidiMessage::noteOff(1,60),480);
+        pedal.addEvent(juce::MidiMessage::controllerEvent(1,64,0),6*480);
+        const auto held=MidiSong::parse(save(pedal,"pedal.mid"));
+        check(held.parts[0].notes[0].end==48 && held.parts[0].notes[0].soundEnd==6*48,"pedal-held notes retain physical and sounding durations independently");
+        check(held.patterns[0][0].BarDataList.at(0).StepDataList.at(0).nodeList.at(60).at(0).lenInSteps==4,"the first scene retains the original physical note-off");
+        check(held.patterns[1][0].BarDataList.at(0).StepDataList.at(0).nodeList.at(60).at(0).lenInSteps==8,"pedal-held voices are recreated in the next scene until pedal release");
+        check(held.retriggers==1 && held.unmatched==0,"pedal boundary recreation is reported without false note repairs");
+        for(int cc:{120,123,124,125,126,127})
+        {
+            juce::MidiMessageSequence off;
+            off.addEvent(juce::MidiMessage::noteOn(1,60,uint8_t(100)),0);
+            off.addEvent(juce::MidiMessage::controllerEvent(1,cc,0),2*480);
+            off.addEvent(juce::MidiMessage::noteOff(1,60),6*480);
+            const auto plan=MidiSong::parse(save(off,("mode-"+std::to_string(cc)+".mid").c_str()));
+            check(plan.parts[0].notes[0].soundEnd==2*48 && plan.patterns[1][0].BarDataList.at(0).StepDataList.at(0).nodeList.empty() && plan.unmatched==0,
+                "channel mode "+juce::String(cc)+" ends notes without reviving them in a later scene");
+        }
+        for(int cc:{120,121,123})
+        {
+            auto sequence=pedal;sequence.addEvent(juce::MidiMessage::controllerEvent(1,cc,0),2*480);
+            const auto plan=MidiSong::parse(save(sequence,("pedal-mode-"+std::to_string(cc)+".mid").c_str()));
+            check(plan.parts[0].notes[0].soundEnd==(cc==123?6:2)*48,
+                "pedal state obeys channel mode "+juce::String(cc));
+        }
+        juce::MidiMessageSequence parameters;
+        parameters.addEvent(juce::MidiMessage::controllerEvent(1,101,0),0);
+        parameters.addEvent(juce::MidiMessage::controllerEvent(1,100,0),0);
+        parameters.addEvent(juce::MidiMessage::controllerEvent(1,6,12),0);
+        parameters.addEvent(juce::MidiMessage::controllerEvent(1,101,127),480);
+        parameters.addEvent(juce::MidiMessage::controllerEvent(1,100,127),480);
+        parameters.addEvent(juce::MidiMessage::pitchWheel(1,12000),2*480);
+        parameters.addEvent(juce::MidiMessage::noteOn(1,60,uint8_t(100)),0);
+        parameters.addEvent(juce::MidiMessage::noteOff(1,60),7*480);
+        const auto rpn=MidiSong::parse(save(parameters,"rpn.mid"));
+        const auto& restored=rpn.patterns[1][0].BarDataList.at(0).StepDataList.at(0).auxList;
+        check(restored.size()==6 && restored[0].data1==101 && restored[0].data2==0 && restored[1].data1==100 && restored[2].data1==6 && restored[2].data2==12 && restored[3].data2==127,
+            "RPN selection, data entry and deselection retain their order across scenes");
+        parameters.addEvent(juce::MidiMessage::controllerEvent(1,121,0),3*480);
+        const auto resetRpn=MidiSong::parse(save(parameters,"rpn-reset.mid"));
+        const auto& resetEvents=resetRpn.patterns[1][0].BarDataList.at(0).StepDataList.at(0).auxList;
+        check(resetEvents.size()==6 && resetEvents[2].data1==6 && resetEvents[2].data2==12 && resetEvents.back().data1==121,
+            "Reset Controllers clears stale bend while preserving registered bend-range setup");
+        auto reject=[&](const juce::File& file,bool clips,const juce::String& text)
+        {bool refused=false;try{if(clips)MidiImport::parse(file);else MidiSong::parse(file);}catch(...){refused=true;}check(refused,text);};
+        const uint8_t zeroTempo[]{0xff,0x51,0x03,0,0,0};auto bad=pedal;bad.addEvent(juce::MidiMessage(zeroTempo,6),0);
+        const auto zero=save(bad,"zero-tempo.mid");reject(zero,false,"song import rejects zero tempo");reject(zero,true,"clip import rejects zero tempo");
+        const uint8_t badPort[]{0xff,0x21,0};bad=pedal;bad.addEvent(juce::MidiMessage(badPort,3),0);
+        const auto port=save(bad,"bad-port.mid");reject(port,false,"song import rejects malformed port metadata");reject(port,true,"clip import rejects malformed port metadata");
+        const uint8_t unsupportedPort[]{0xff,0x21,1,24};bad=pedal;bad.addEvent(juce::MidiMessage(unsupportedPort,4),0);
+        reject(save(bad,"unsupported-port.mid"),false,"unavailable logical ports are rejected instead of silently remapped");
+        bool validPorts=true,cvRejected=true;
+        for(int portId=0;portId<int(midiDataIOPorts::maxMidiIOPorts);++portId)
+        {
+            const uint8_t bytes[]{0xff,0x21,1,uint8_t(portId)};
+            juce::MidiMessageSequence part;part.addEvent(juce::MidiMessage(bytes,4),0);
+            part.addEvent(juce::MidiMessage::noteOn(1,60,uint8_t(100)),0);
+            part.addEvent(juce::MidiMessage::noteOff(1,60),480);
+            bool accepted=false;int imported=-1;
+            try{const auto plan=MidiSong::parse(save(part,("port-"+std::to_string(portId)+".mid").c_str()));accepted=true;imported=plan.parts[0].port;}catch(...){}
+            if(portId>=int(midiDataIOPorts::cv1) && portId<=int(midiDataIOPorts::cv8))cvRejected&=!accepted;
+            else validPorts&=accepted && imported==portId;
+        }
+        check(validPorts,"all 16 DIN, USB-device and USB-host MIDI port IDs survive import without remapping");
+        check(cvRejected,"CV destinations are rejected as MIDI file port routes");
+        juce::MidiMessageSequence repeats;
+        repeats.addEvent(juce::MidiMessage::noteOn(1,60,uint8_t(100)),0);
+        repeats.addEvent(juce::MidiMessage::noteOn(1,60,uint8_t(90)),240);
+        repeats.addEvent(juce::MidiMessage::noteOff(1,60),480);
+        repeats.addEvent(juce::MidiMessage::noteOff(1,60),960);
+        const auto clips=MidiImport::parse(save(repeats,"repeated.mid"));
+        check(clips.unmatched==0 && clips.patterns[0].BarDataList.at(0).StepDataList.at(0).nodeList.at(60).at(0).lenInSteps==4,
+            "clip import preserves FIFO note-off pairing for overlapping pitches");
+    }
+    void pedalAudio()
+    {
+        try
+        {
+            const auto plan=IgniteDesktop::Media::MidiSong::parse(root.getChildFile("pedal.mid"));
+            plan.apply(engine);check(engine.SaveAllData(),"pedal arrangement saves through the normal project path");
+            target=root.getChildFile("pedal.wav");
+            begin(IgniteDesktop::Media::capture(engine,false,-1,"wav"),[this](juce::Result result)
+            {
+                check(result.wasOk(),"pedal-held arrangement renders through the isolated WAV exporter");
+                juce::WavAudioFormat format;std::unique_ptr<juce::AudioFormatReader> reader(format.createReaderFor(target.createInputStream().release(),true));
+                if(check(bool(reader),"pedal WAV is readable"))
+                {
+                    juce::AudioBuffer<float> buffer(2,9600);
+                    reader->read(&buffer,0,9600,67200,true,true);const float before=buffer.getRMSLevel(0,0,9600);
+                    reader->read(&buffer,0,9600,108000,true,true);const float after=buffer.getRMSLevel(0,0,9600);
+                    check(before>0.0001f && after>before*0.4f,"pedal-held audio remains audible after the imported scene boundary");
+                    reader->read(&buffer,0,9600,216000,true,true);
+                    check(buffer.getRMSLevel(0,0,9600)<before*0.1f,"pedal release ends the recreated voice without stuck notes");
+                }
                 engine.songManager->setActiveSong(0);
-                check(engine.songManager->activeSong->getName()==previous,"the original arrangement remains unchanged and selectable");
-                finish();
+                check(engine.songManager->activeSong->getName()==previous,"the original arrangement remains unchanged and selectable");finish();
             });
         }
         catch(const std::exception& error){check(false,juce::String(error.what()));finish();}

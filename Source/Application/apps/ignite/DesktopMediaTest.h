@@ -171,6 +171,28 @@ private:
                     ++phase;next();
                 });return;
             }
+            if(phase==8 || phase==9)
+            {
+                const bool external=phase==8;auto& descriptor=*engine.songManager->activeSong->editScene->editTrack->getTrackTxInstrument()->_instrumentData;
+                descriptor.internalSound=!external;descriptor.preSendPgmChange=false;descriptor.midiPort=int8_t(external?midiDataIOPorts::usbHostMidi5:-1);
+                target=root.getChildFile(external?"external-port.mid":"unrouted-internal.mid");
+                begin(IgniteDesktop::Media::capture(engine,true,0,"midi"),[this,external](juce::Result result)
+                {
+                    check(result.wasOk(),external?"external-only tracks export without requiring program initialization":"unrouted internal instruments export with a safe default port");
+                    juce::MidiFile file;auto input=target.createInputStream();bool port=false,program=false;
+                    if(input && file.readFrom(*input,false))for(int track=0;track<file.getNumTracks();++track)
+                        for(int i=0;i<file.getTrack(track)->getNumEvents();++i)
+                        {
+                            const auto& message=file.getTrack(track)->getEventPointer(i)->message;
+                            program|=message.isProgramChange();
+                            if(message.isMetaEvent() && message.getMetaEventType()==0x21 && message.getMetaEventLength()==1)
+                                port|=message.getMetaEventData()[0]==int(external?midiDataIOPorts::usbHostMidi5:midiDataIOPorts::usbDevMidi1);
+                        }
+                    check(port,external?"external MIDI logical port survives export without program change":"internal MIDI with no assigned port uses USB device 1 metadata");
+                    if(external)check(!program,"external export does not introduce an unwanted program change");
+                    ++phase;next();
+                });return;
+            }
             finish();
         }
         catch(const std::exception& error){check(false,juce::String(error.what()));finish();}

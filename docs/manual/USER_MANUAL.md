@@ -1,10 +1,10 @@
 ﻿# IGNITE Desktop Simulator
 
-**User manual · Community release v0.3.3-desktop.6 · 29 October 2026**
+**User manual · Community release v0.3.3-desktop.7 · 29 October 2026**
 
 IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with compact and hardware layouts, plus desktop audio, MIDI, SoundFont and backup controls. Both layouts run the actual firmware touchscreen and the same panel controls.
 
-This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.6` identifies this community release.
+This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.7` identifies this community release.
 
 ![IGNITE simulator compact layout with a large live touchscreen](../images/ignite-compact.png)
 
@@ -27,7 +27,7 @@ This is an independent community build of Music Tribe's open-source release. It 
 
 ## 1. Install and launch
 
-Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.6). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
+Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.7). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
 
 The package is portable and does not require an installer, Visual Studio or a Python installation to run. Development tools are needed only to rebuild it. A working Windows audio output is required to hear internal sound. Supply your own `.sf2` SoundFont; sample banks are not included.
 
@@ -263,7 +263,7 @@ Song, scene, pattern and desktop restore replacements retain recovery directorie
 
 WAV output is stereo **48 kHz, 32-bit floating point**, with a two-second release/effect tail after the final scene. It includes internal instruments, mute/solo selection, effects and master level. External MIDI instruments contribute no audio. Required SF2 files and presets must be available. There is a 30-minute arrangement limit. Floating-point files can retain peaks above 0 dBFS; adjust the level in your audio editor before converting to an integer format.
 
-MIDI output is a **type 1 Standard MIDI File, 960 PPQ**, with scene tempo changes, time signatures and markers, track names, note durations, supported controller/pressure/pitch-bend events and instrument bank/program initialization. Logical output-port metadata accompanies initialization; your DAW may require routing the tracks again. MIDI contains no audio, SF2 samples or Ignite effect processing. Shared channels on a destination can still interact, so choose distinct channel/port assignments when needed.
+MIDI output is a **type 1 Standard MIDI File, 960 PPQ**, with scene tempo changes, time signatures and markers, track names, note durations, supported controller/pressure/pitch-bend events and instrument bank/program initialization. Logical output-port metadata is included for internal and external parts, including external parts without program initialization; your DAW may require routing the tracks again. Unrouted internal instruments use USB device 1 port metadata. MIDI contains no audio, SF2 samples or Ignite effect processing. Shared channels on a destination can still interact, so choose distinct channel/port assignments when needed.
 
 Export uses a snapshot of the current in-memory edits, including unsaved changes, in an isolated background process. You can continue editing while it renders. **Cancel export** or closing Desktop Settings cancels the job. A cancelled or failed job keeps an existing destination file; a completed export replaces it. Progress appears in Projects. Neither export requires physical MIDI devices or a live audio output.
 
@@ -289,7 +289,9 @@ Tempo changes, time signatures and markers divide the arrangement into scenes. L
 
 Common meters that fit 1?16 sixteenths per global bar, including 3/4 and 6/8, use that global bar length. Longer or finer meters retain their original MIDI signature but use a normalised global bar grid in Ignite. A partial passage can also use shortened global bars to express its exact duration. These bar labels do not change the absolute timing of imported events.
 
-Program/bank changes select internal sounds. Controllers, pitch bend and pressure remain pattern events, with prior controller/bend state restored at subsequent scenes. Instruments use the default SF2; the import does not identify or supply the original samples. Notes held across scene boundaries retrigger because Ignite changes scene voices there. Pedal-held notes and release/effect tails are not continuous across scene changes. Duplicate pitch/start events merge and unmatched note edges are repaired; the completion message reports adjustments. SysEx is omitted. This converts an arrangement into Ignite's scene model; it does not preserve a live performance's original synth state.
+Program/bank changes select internal sounds. Controllers, pitch bend and pressure remain pattern events, with prior controller/bend state restored at subsequent scenes. RPN/NRPN selection and data-entry sequences retain their order, including Reset Controllers behavior. Instruments use the default SF2; the import does not identify or supply the original samples. Key-held and pedal-held notes are recreated at subsequent scene boundaries because Ignite changes scene voices there. A pedal-held replacement lasts until pedal release, Reset Controllers or All Sound Off. Envelopes retrigger and release/effect tails remain discontinuous at scene changes. All Notes Off and channel-mode note releases obey the sustain state; All Sound Off ends affected voices immediately. Later physical note-offs do not revive a terminated note. Duplicate pitch/start events merge and unmatched note edges are repaired; the completion message reports adjustments. SysEx is omitted. This converts an arrangement into Ignite's scene model; it does not preserve a live performance's original synth state.
+
+Re-import MIDI sources converted by an earlier release to apply the new pedal and channel-mode note handling. Explicit MIDI port numbers outside Ignite's MIDI ranges (0-4 and 13-23) are rejected with a remapping message. IDs 5-12 are CV destinations. Zero tempo and malformed port metadata are rejected by both song and clip import. Clip import preserves overlapping same-pitch note-off pairing.
 
 Song limits are 32 MB, 200,000 total MIDI events, 64 track/port/channel parts, a 4,096-bar source span, 128 scenes, 512 new patterns and 500,000 generated scene events. The instrument library has a 255-item limit, and the song library has a 1,000-item limit. Tempos outside 20?360 BPM, SMPTE timing, type 2 independent sequences, malformed metadata and excessive imports are rejected before creating song entries.
 
@@ -353,7 +355,7 @@ See [Windows build instructions](../BUILD_WINDOWS.md) for Visual Studio, CMake, 
 .\scripts\workflow-windows.ps1 -Configuration Release -NodeEdit -AudioDevice -SimulateInterruptedSave
 ```
 
-Tests use disposable directories under the ignored build tree. Verification covers **84 native Release/ASan checks**, **85 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **61 layout checks**, **99 stereo/effects/multi-bank checks**, **88 media setup/export/import/reopen checks**, **103 MIDI song setup/import/round-trip/reopen checks**, **91 no-font workflow checks under ASan**, and **seven smoke checks per font/no-font case**. The unchanged packet protocol previously passed five checks. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
+Tests use disposable directories under the ignored build tree. Verification covers **84 native Release/ASan checks**, **85 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **61 layout checks**, **99 stereo/effects/multi-bank checks**, **93 media setup/export/import/reopen checks**, **131 MIDI song setup/import/round-trip/reopen checks**, **91 no-font workflow checks under ASan**, and **seven smoke checks per font/no-font case**. The unchanged packet protocol previously passed five checks. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
 
 The separate AudIO, DAW and Airwindows libraries also build, but the main app uses its firmware TinySoundFont path. Detailed evidence and remaining audit items are in [AUDIT_FIXES.md](../AUDIT_FIXES.md), [CAPABILITIES.md](../CAPABILITIES.md) and [DEVELOPMENT.md](../DEVELOPMENT.md).
 

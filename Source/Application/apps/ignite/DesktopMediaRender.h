@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 #include "DesktopMediaSnapshot.h"
+#include "DesktopMidiPorts.h"
 
 namespace IgniteDesktop::Media
 {
@@ -52,15 +53,19 @@ namespace IgniteDesktop::Media
                     if(midi && !track.trackMuted() && track.getTrackMainPattern() && track.getTrackTxInstrument())
                     {
                         auto name=juce::MidiMessage::textMetaEvent(3,juce::String(track.getTrackName()));name.setTimeStamp(quarter*960);tracks[track.getTrackId()].addEvent(name);
-                        if(auto* instrument=track.getTrackTxInstrument();instrument && (instrument->getInternalSound() || instrument->_instrumentData->preSendPgmChange))
+                        auto* instrument=track.getTrackTxInstrument();
+                        const int channel=std::clamp(int(instrument->getMidiChannel())+1,1,16);
+                        auto add=[&](juce::MidiMessage message){message.setTimeStamp(quarter*960);tracks[track.getTrackId()].addEvent(message);};
+                        const int logicalPort=instrument->getMidiPort()<0 && instrument->getInternalSound()
+                            ?int(midiDataIOPorts::usbDevMidi1):int(instrument->getMidiPort());
+                        if(!isMidiPortId(logicalPort))throw std::runtime_error("An instrument has no valid logical MIDI output port.");
+                        const uint8_t port[]{0xff,0x21,0x01,uint8_t(logicalPort)};add(juce::MidiMessage(port,4));
+                        if(instrument->getInternalSound() || instrument->_instrumentData->preSendPgmChange)
                         {
                             const int encoded=instrument->getInternalSoundPgm();
                             const int bank=instrument->getInternalSound()?(SoundFontProgram::isCustom(encoded)?SoundFontProgram::bank(encoded):(encoded>127?128:0)):((int(instrument->_instrumentData->pgmChangeData.bankMSB)<<7)|int(instrument->_instrumentData->pgmChangeData.bankLSB));
                             const int program=instrument->getInternalSound()?(SoundFontProgram::isCustom(encoded)?SoundFontProgram::program(encoded):(encoded>127?Track::getTsfPresetFromIgniteIndex(encoded):encoded)):instrument->_instrumentData->pgmChangeData.midiPgmNum;
                             if(bank<0 || bank>16383)throw std::runtime_error("An SF2 bank number exceeds the MIDI bank range. Use WAV export or select a MIDI-compatible bank.");
-                            const int channel=std::clamp(int(instrument->getMidiChannel())+1,1,16);
-                            auto add=[&](juce::MidiMessage message){message.setTimeStamp(quarter*960);tracks[track.getTrackId()].addEvent(message);};
-                            const uint8_t port[]{0xff,0x21,0x01,uint8_t(std::clamp(int(instrument->getMidiPort()),0,127))};add(juce::MidiMessage(port,4));
                             add(juce::MidiMessage::controllerEvent(channel,0,std::clamp(bank>>7,0,127)));add(juce::MidiMessage::controllerEvent(channel,32,bank&127));add(juce::MidiMessage::programChange(channel,std::clamp(program,0,127)));
                         }
                     }

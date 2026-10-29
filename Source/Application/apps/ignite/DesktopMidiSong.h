@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 #include "DesktopMidiImport.h"
+#include "DesktopMidiNotes.h"
 #include <numeric>
 #include <tuple>
 
@@ -10,7 +11,7 @@ namespace IgniteDesktop::Media
     struct MidiSong
     {
         struct Event { juce::MidiMessage message; int tick; };
-        struct Note { int pitch,velocity,start,end; };
+        using Note=MidiNotes::Note;
         struct Part
         {
             juce::String name;
@@ -85,8 +86,11 @@ namespace IgniteDesktop::Media
                     if(message.isMetaEvent() && message.getMetaEventType()==6)
                         markers[gridBoundary(tick)]=message.getTextFromTextMetaEvent();
                     if(message.isSysEx())++result.ignoredSysEx;
-                    if(message.isMetaEvent() && message.getMetaEventType()==0x21 && message.getMetaEventLength()==1)
-                        port=std::clamp(int(message.getMetaEventData()[0]),0,15);
+                    if(message.isMetaEvent() && message.getMetaEventType()==0x21)
+                    {
+                        port=message.getMetaEventData()[0];
+                        if(!isMidiPortId(port))throw std::runtime_error("MIDI uses a port outside Ignite's MIDI routes (0-4, 13-23). Remap the port or import clips instead.");
+                    }
                     if(message.getChannel()>0 && (message.isNoteOnOrOff() || message.isController() ||
                         message.isProgramChange() || message.isPitchWheel() || message.isAftertouch() || message.isChannelPressure()))
                         groups[{track,port,message.getChannel()}].push_back({message,tick});
@@ -100,20 +104,14 @@ namespace IgniteDesktop::Media
                 const auto [track,port,channel]=group.first;
                 Part part;part.name=(names.count(track)?names.at(track):"Track "+juce::String(track+1))+" Ch"+juce::String(channel);
                 part.channel=channel;part.port=port;
-                std::map<int,std::deque<std::pair<int,int>>> held;
+                MidiNotes timeline;
                 int msb=0,lsb=0;
                 for(const auto& event:group.second)
                 {
                     const auto& m=event.message;
-                    if(m.isNoteOn())held[m.getNoteNumber()].push_back({event.tick,m.getVelocity()});
-                    else if(m.isNoteOff())
-                    {
-                        auto& list=held[m.getNoteNumber()];
-                        if(list.empty()){++result.unmatched;continue;}
-                        const auto start=list.front();list.pop_front();
-                        part.notes.push_back({m.getNoteNumber(),start.second,start.first,std::max(start.first+1,event.tick)});
-                    }
-                    else if(m.isController() && (m.getControllerNumber()==0 || m.getControllerNumber()==32))
+                    timeline.accept(m,event.tick);
+                    if(m.isNoteOnOrOff())continue;
+                    if(m.isController() && (m.getControllerNumber()==0 || m.getControllerNumber()==32))
                     {
                         if(m.getControllerNumber()==0)msb=m.getControllerValue();else lsb=m.getControllerValue();
                         const int bank=channel==10 && msb==0 && lsb==0?128:msb*128+lsb;
@@ -122,8 +120,7 @@ namespace IgniteDesktop::Media
                     }
                     else part.auxiliary.push_back(event);
                 }
-                for(const auto& pitch:held)for(const auto& start:pitch.second)
-                {part.notes.push_back({pitch.first,start.second,start.first,std::max(start.first+1,end)});++result.unmatched;}
+                timeline.finish(end);result.unmatched+=timeline.unmatched;part.notes=std::move(timeline.notes);
                 result.parts.push_back(std::move(part));
             }
             if(std::none_of(result.parts.begin(),result.parts.end(),[](const auto& part){return !part.notes.empty() || !part.auxiliary.empty();}))
@@ -242,10 +239,12 @@ namespace IgniteDesktop::Media
                 {auto& s=b.StepDataList[uint16_t(step)];s={};s.BarId=uint16_t(bar);s.stepId=uint16_t(bar*16+step);s.enable=true;}
             }
             auto count=[&]{if(++generated>500000)throw std::runtime_error("MIDI creates too many scene events. Import a smaller arrangement.");};
-            for(const auto& note:part.notes)if(note.start<section.end && note.end>section.begin)
+            for(const auto& note:part.notes)if(note.start<section.end && note.soundEnd>section.begin)
             {
                 const int start=std::max(note.start,section.begin)-section.begin;
-                const int duration=std::min(note.end,section.end)-std::max(note.start,section.begin),step=start/12;
+                const bool pedalHeld=note.start<section.begin && note.end<=section.begin;
+                const int end=pedalHeld?note.soundEnd:note.end;
+                const int duration=std::min(end,section.end)-std::max(note.start,section.begin),step=start/12;
                 auto& s=data.BarDataList.at(uint8_t(step/16)).StepDataList.at(uint16_t(step%16));
                 ClientPatternNodeData node{};node.note=node.nodeId=uint8_t(note.pitch);node.velocity=uint8_t(note.velocity);node.onState=true;
                 node.offset=TickOffset_t(start%12);node.step_id=uint16_t(step);
@@ -261,12 +260,16 @@ namespace IgniteDesktop::Media
                     {true,uint16_t(bytes[0]&0xf0),int8_t(bytes[1]),int8_t(message.getRawDataSize()>2?bytes[2]:0),TickOffset_t(tick%12)});count();
             };
             std::map<int,Event> state;
+            std::vector<Event> parameters;
             for(const auto& event:part.auxiliary)
             {
                 if(event.tick>=section.begin)break;
                 const auto& m=event.message;
                 if(m.isController() && m.getControllerNumber()==121)
                 {
+                    // Reset Controllers clears the selector/data latch, while
+                    // registered parameter values such as bend range persist.
+                    if(!parameters.empty())parameters.push_back(event);
                     for(auto it=state.begin();it!=state.end();)
                     {
                         const int cc=it->first;
@@ -275,11 +278,16 @@ namespace IgniteDesktop::Media
                     }
                 }
                 if(m.isController() && m.getControllerNumber()<120)
-                    state.insert_or_assign(m.getControllerNumber(),event);
+                {
+                    const int cc=m.getControllerNumber();
+                    if(cc==6 || cc==38 || (cc>=96 && cc<=101))parameters.push_back(event);
+                    else state.insert_or_assign(cc,event);
+                }
                 else if(m.isPitchWheel())state.insert_or_assign(128,event);
                 else if(m.isChannelPressure())state.insert_or_assign(129,event);
             }
             std::vector<Event> restore;for(const auto& item:state)restore.push_back(item.second);
+            restore.insert(restore.end(),parameters.begin(),parameters.end());
             std::stable_sort(restore.begin(),restore.end(),[](const auto& a,const auto& b){return a.tick<b.tick;});
             for(const auto& event:restore)auxiliary(event.message,0);
             for(const auto& event:part.auxiliary)if(event.tick>=section.begin && event.tick<section.end)

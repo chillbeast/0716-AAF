@@ -175,3 +175,27 @@ Desktop.6 regression evidence, relative to `Source/Application/build`:
 | No-font workflow (91) | - | `workflow/20261029-013610` |
 
 Release/Debug/ASan builds and native checks pass (84/85/84). The final controller-reset change affects song import; its new regression is included in the final 103-check runs above. Final rebuilt feature checks also pass, at Release `features/20261029-013632` and ASan `features/20261029-013508`. The sanitizer prefixes `asan_song6`, `asan_song6_regression` and `asan_song6_publish` produce no address-error report. The manual has 23 pages and an actual Projects screenshot. Counts overlap through repeated setup; physical I/O and complete external-synth equivalence are not established.
+
+## Desktop.7 MIDI fidelity verification
+
+`DesktopMidiNotes.h` now pairs physical key events while separately tracking pedal-held sounding duration. Import recreates pedal-held voices in later scenes until release; channel-mode note endings, All Sound Off and Reset Controllers prevent terminated voices from reappearing. Physical key duration remains intact in its starting scene. Parameter-state reconstruction retains ordered RPN/NRPN/data-entry events and reset semantics. Voices still retrigger envelopes at scene changes, and effect/release tails remain discontinuous.
+
+`DesktopMidiPorts.h` shares the actual route validation: DIN IDs 0-4 and USB IDs 13-23, with CV IDs 5-12 excluded. Desktop.6 used a dense 0-15 assumption during file import and clamped later USB destinations. New checks cover every valid MIDI ID and each CV exclusion. External-only MIDI export now emits port metadata without requiring program initialization. Unrouted internal instruments use USB device 1 (ID 13). Zero tempo/malformed port payloads are rejected in both import paths, and clip parsing retains original overlapping note events rather than JUCE-generated replacement note-offs.
+
+The final MIDI song suite totals 131 checks (50 setup, 69 song/audio, 12 reopen); media totals 93 (50 setup, 38 media, five reopen). A rendered pedal fixture remains audible beyond the scene boundary and ends after pedal release. An independent Standard MIDI File parser confirms external host-5 output has port 23, two notes and no program change; unrouted internal output has port 13, two notes and program initialization.
+
+Desktop.7 evidence, relative to `Source/Application/build`:
+
+| Suite | Release | ASan |
+|---|---|---|
+| MIDI songs (131) | `midi-song/20261029-110729` | `midi-song/20261029-110647` |
+| Media (93) | `media/20261029-110751` | `media/20261029-110747` |
+| Sound (99) | `sound/20261029-110021` | `sound/20261029-105719` |
+| MIDI/save/editor (107) | `correctness/20261029-110040` | `correctness/20261029-105815` |
+| Features (75) | `features/20261029-110051` | `features/20261029-105906` |
+| Layouts (61) | `layout/20261029-110106` | `layout/20261029-105948` |
+| Device/recovery (107) | `workflow/20261029-110121` | `workflow/20261029-110032` |
+| Font/no-font smoke (14) | `smoke/20261029-110134` | - |
+| No-font workflow (91) | - | `workflow/20261029-110239` |
+
+Release/Debug/ASan builds and native checks pass (84/85/84). The final port correction is covered by the two expanded suites above; other application/backend code is unchanged by that correction. Sanitizer prefixes `asan_fidelity7`, `asan_fidelity7_final` and `asan_fidelity7_ports` produce no address-error reports. The manual has 23 pages and explains conversion/re-import and route limitations. Counts include repeated setup. VST integration, complete SF2 modulators and physical I/O qualification remain separate outstanding work.
