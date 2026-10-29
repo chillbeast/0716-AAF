@@ -2,6 +2,11 @@
 
 Buildroot tree for the BE 0716-AAF Linux image.
 
+For a source-based overview of the processor/OS configuration, boot services,
+partitions, hardware interfaces, build gaps and device inspection commands, see
+the community [Linux OS guide and source audit](../docs/LINUX_OS_GUIDE.md).
+It distinguishes the supplied recipes from a verified, installable device image.
+
 ## Building
 
 On a Linux host:
@@ -9,6 +14,11 @@ On a Linux host:
 ```sh
 ./builder.sh Ignite      # installs host packages, then: make Ignite_defconfig && make
 ```
+
+This is the original build entry point. Review the [known build and installation
+gaps](../docs/LINUX_OS_GUIDE.md#known-build-and-installation-gaps) first: the released
+pipeline still references omitted payloads and an older application repository
+layout, so it is not a verified one-command device installer.
 
 Board files are in `buildroot/board/freescale/imx8mm_var_som/ignite/`. The configurations are
 `buildroot/configs/Ignite_defconfig`, `Ignite-rel_defconfig` and `Ignite_uuu_defconfig`.

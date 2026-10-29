@@ -4,6 +4,10 @@
 
 # Behringer IGNITE (BE 0716-AAF)
 
+**Device OS reference:** [Linux OS guide and source audit](docs/LINUX_OS_GUIDE.md) —
+configured specs, boot/services, storage, hardware interfaces, build/update paths
+and known gaps in the released Linux image recipes.
+
 **Community Windows release:** [Downloads](https://github.com/chillbeast/0716-AAF/releases) · [User manual](docs/manual/USER_MANUAL.md) · [Printable PDF](docs/manual/USER_MANUAL.pdf) · [Release notes](RELEASE_NOTES.md)
 
 Extract the Windows package and run `Ignite.exe`, then choose your own SF2 in **DESKTOP SETTINGS → SoundFonts**. The package includes the manual as PDF and self-contained HTML, plus corresponding source. This fork's desktop work is on `desktop-build`; `main` preserves the upstream baseline.
