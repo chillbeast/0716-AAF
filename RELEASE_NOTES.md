@@ -1,3 +1,18 @@
+# IGNITE Desktop v0.3.3-desktop.6
+
+Import arranged MIDI songs with tempo and meter changes.
+
+- **Projects → Import MIDI song...** opens type 0/1 PPQ MIDI as a new song with named tracks, assigned patterns/internal instruments, scene tempos, time signatures, marker names and bank/program selections. Channel 10 defaults to SF2 percussion bank 128.
+- Save current edits and stop playback before importing. Existing songs stay available; save the imported song and its new library items with normal Save All. MIDI clip import remains available independently.
+- MIDI export now includes saved time signatures. Fractional scene tempos survive reopening, and song/scene XML retains float precision.
+- Carries controller/bend state into later scenes, retains silent parts and trailing duration, and reports conversion adjustments. Tempo/meter/marker boundaries round to sixteenths; note/event timing uses 48 ticks/quarter. Notes held across scenes retrigger. Long/fine meters keep their MIDI signature with a normalised internal global-bar grid. SysEx is omitted.
+- Validates file/event/part/scene/pattern/library limits before song creation, rejects type 2/SMPTE and bad tempos, and checks malformed tempo/meter payloads before JUCE reads them. Clip import shares the metadata checks.
+- Updated illustrated manual and generated MIDI/stereo-SF2 tests covering MIDI/WAV round trips, fractional tempo and meter persistence, drum banks, program changes, unsaved work and retention of previous songs.
+
+Release, Debug and AddressSanitizer builds succeed. The 103-check MIDI song suite passes in Release and ASan, alongside the 88 media, 99 sound, 107 MIDI/save/editor, 75 desktop feature, 61 layout and 107 device/recovery checks. Native checks remain 84 Release/ASan and 85 Debug; font/no-font smoke passes in Release. Counts include repeated setup. Final sanitizer runs produce no address-error report.
+
+Download **Ignite-Desktop-v0.3.3-desktop.6-windows-x64.zip**, extract it and run **Ignite.exe**. The manual and corresponding source are included; supply your own SF2 files. Complete SF2 modulators, a working Ignite VST and physical MIDI/CV/clock qualification remain outstanding. This is a community preview.
+
 # IGNITE Desktop v0.3.3-desktop.5
 
 WAV/stem export, MIDI file interchange and saved track effects.

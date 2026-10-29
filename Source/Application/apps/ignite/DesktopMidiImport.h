@@ -5,6 +5,14 @@
 
 namespace IgniteDesktop::Media
 {
+    inline void validateMidiMetadata(const juce::MidiMessage& message)
+    {
+        if(!message.isMetaEvent())return;
+        const int type=message.getMetaEventType(),length=message.getMetaEventLength();
+        if(type==0x51 && length!=3)throw std::runtime_error("MIDI contains an invalid tempo event.");
+        if(type==0x58 && (length!=4 || message.getMetaEventData()[0]==0 || message.getMetaEventData()[1]>5))
+            throw std::runtime_error("MIDI contains an invalid or unsupported time signature.");
+    }
     struct MidiImport
     {
         std::vector<ClientPatternData> patterns;
@@ -26,6 +34,7 @@ namespace IgniteDesktop::Media
                 for(int index=0;index<sequence->getNumEvents();++index)
                 {
                     const auto& message=sequence->getEventPointer(index)->message;
+                    validateMidiMetadata(message);
                     if(!std::isfinite(message.getTimeStamp()) || message.getTimeStamp()<0)throw std::runtime_error("MIDI contains invalid event timing.");
                     if(message.isTempoMetaEvent() && message.getTimeStamp()==0)result.tempo=60.0/message.getTempoSecondsPerQuarterNote();
                     if(message.getChannel()<1)continue;

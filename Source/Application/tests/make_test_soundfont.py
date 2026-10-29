@@ -53,7 +53,9 @@ def make_font(bank=0, program=0, presets=None, stereo=False):
 if __name__ == '__main__':
     target = Path(sys.argv[1])
     target.parent.mkdir(parents=True, exist_ok=True)
-    if len(sys.argv) > 2 and sys.argv[2] == '--stereo':
+    if len(sys.argv) > 2 and sys.argv[2] == '--song':
+        target.write_bytes(make_font(presets=[(0, 0, 0), (0, 1, 12), (42, 7, -12), (128, 0, 0)], stereo=True))
+    elif len(sys.argv) > 2 and sys.argv[2] == '--stereo':
         target.write_bytes(make_font(stereo=True))
     elif len(sys.argv) > 2 and sys.argv[2] == '--alternate':
         target.write_bytes(make_font(presets=[(0, 0, 12)]))

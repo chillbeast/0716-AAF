@@ -31,7 +31,7 @@ foreach($relative in $files) {
 IGNITE desktop simulator
 
 Run Ignite.exe. Choose DESKTOP SETTINGS (or Ctrl+,) for audio, MIDI routing,
-SoundFont loading/preview, WAV/stem and MIDI export, MIDI clip import,
+SoundFont loading/preview, WAV/stem and MIDI export, MIDI song/clip import,
 and project backup ZIP export/restore. Stop playback before media export.
 Supply your own .sf2 bank; no private sample libraries are included.
 The app stores user data under %APPDATA%\BehringerIgnite.

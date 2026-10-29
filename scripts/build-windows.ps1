@@ -52,6 +52,7 @@ if(!$SkipChecks) {
         & (Join-Path $PSScriptRoot 'correctness-windows.ps1') -Configuration Release
         & (Join-Path $PSScriptRoot 'sound-windows.ps1') -Configuration Release
         & (Join-Path $PSScriptRoot 'media-windows.ps1') -Configuration Release
+        & (Join-Path $PSScriptRoot 'midi-song-windows.ps1') -Configuration Release
         & (Join-Path $PSScriptRoot 'layout-windows.ps1') -Configuration Release
         & (Join-Path $PSScriptRoot 'smoke-windows.ps1') -Configuration Release
     }

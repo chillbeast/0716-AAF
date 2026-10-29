@@ -101,7 +101,7 @@ namespace IgniteDesktop::Media
         for(auto& source:songs.activeSong->_songData->sceneList)
         {
             if(sceneOnly && &source!=songs.activeSong->editScene)continue;
-            auto& s=child(scenes,"Scene");const auto& d=*source._sceneData;s.setAttribute("name",d.sceneName);s.setAttribute("tempo",d.sceneTempo);s.setAttribute("swing",d.sceneSwing);s.setAttribute("bars",d.numBars);s.setAttribute("steps",d.gBarLenInSteps);s.setAttribute("scale",d.scaleFTS);s.setAttribute("root",d.noteFTS);s.setAttribute("transpose",d.transposeValue);s.setAttribute("priority",d.transposeAfterFTS);
+            auto& s=child(scenes,"Scene");const auto& d=*source._sceneData;s.setAttribute("name",d.sceneName);s.setAttribute("numerator",d.desktopMeterNumerator);s.setAttribute("denominator",d.desktopMeterDenominator);s.setAttribute("tempo",d.sceneTempo);s.setAttribute("swing",d.sceneSwing);s.setAttribute("bars",d.numBars);s.setAttribute("steps",d.gBarLenInSteps);s.setAttribute("scale",d.scaleFTS);s.setAttribute("root",d.noteFTS);s.setAttribute("transpose",d.transposeValue);s.setAttribute("priority",d.transposeAfterFTS);
             for(auto& track:source._sceneData->trackList)
             {
                 const auto& t=*track._trackData;auto& item=child(s,"Track");item.setAttribute("id",t.trackId);item.setAttribute("name",t.trackName);item.setAttribute("instrument",t.trackTxInstrumentName);item.setAttribute("pattern",t.mainPatternName);
@@ -130,7 +130,7 @@ namespace IgniteDesktop::Media
         for(const auto* source:required(job,"Scenes").getChildIterator())
         {
             Scene scene(sceneIndex++,source->getStringAttribute("name").toStdString(),float(source->getDoubleAttribute("tempo")),int8_t(source->getIntAttribute("swing")),0,0,&songs);auto& d=*scene._sceneData;
-            d.numBars=uint16_t(source->getIntAttribute("bars"));d.gBarLenInSteps=int8_t(source->getIntAttribute("steps"));d.scaleFTS=uint8_t(source->getIntAttribute("scale"));d.noteFTS=uint8_t(source->getIntAttribute("root"));d.transposeValue=int8_t(source->getIntAttribute("transpose"));d.transposeAfterFTS=source->getBoolAttribute("priority");
+            d.desktopMeterNumerator=uint8_t(source->getIntAttribute("numerator",4));d.desktopMeterDenominator=uint8_t(source->getIntAttribute("denominator",4));d.numBars=uint16_t(source->getIntAttribute("bars"));d.gBarLenInSteps=int8_t(source->getIntAttribute("steps"));d.scaleFTS=uint8_t(source->getIntAttribute("scale"));d.noteFTS=uint8_t(source->getIntAttribute("root"));d.transposeValue=int8_t(source->getIntAttribute("transpose"));d.transposeAfterFTS=source->getBoolAttribute("priority");
             if(d.numBars<1 || d.numBars>200 || d.gBarLenInSteps<1 || d.gBarLenInSteps>16 || !std::isfinite(d.sceneTempo) || d.sceneTempo<20 || d.sceneTempo>360)throw std::runtime_error("Invalid scene duration or tempo");
             for(const auto* item:source->getChildIterator())if(item->hasTagName("Track"))
             {

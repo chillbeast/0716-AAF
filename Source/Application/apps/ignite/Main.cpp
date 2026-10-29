@@ -41,6 +41,7 @@ extern IDevice* EngineInit(void);
 #include "DesktopSoundTest.h"
 #include "DesktopMediaRender.h"
 #include "DesktopMediaTest.h"
+#include "DesktopMidiSongTest.h"
 
 //==============================================================================
 #define SHOW_BOOT_IMAGE
@@ -233,6 +234,14 @@ public:
                 if(failures){setApplicationReturnValue(1);quit();return;}
                 mediaTest=std::make_unique<DesktopMediaTest>(engine,[this](int failed){setApplicationReturnValue(failed?1:0);quit();});mediaTest->start(verify);
             });
+        if(commandLine.contains("--midi-song-test") || commandLine.contains("--midi-song-verify"))
+            Timer::callAfterDelay(2500,[this,commandLine]
+            {
+                auto& engine=*static_cast<IgniteEngine*>(_PUiVirtualEngine.get());const bool verify=commandLine.contains("--midi-song-verify");
+                const int failures=verify?0:DesktopWorkflowTest::run(engine,false,true,false);
+                if(failures){setApplicationReturnValue(1);quit();return;}
+                midiSongTest=std::make_unique<DesktopMidiSongTest>(engine,[this](int failed){setApplicationReturnValue(failed?1:0);quit();});midiSongTest->start(verify);
+            });
 		auto snapshotPath = SystemStats::getEnvironmentVariable("IGNITE_SNAPSHOT", "");
 		if (snapshotPath.isNotEmpty())
 			Timer::callAfterDelay(2000, [this, snapshotPath]
@@ -250,6 +259,7 @@ public:
 
 	void shutdown() override
 	{
+        midiSongTest.reset();
         mediaTest.reset();
         closeGuard.reset();
         layoutTest.reset();
@@ -458,6 +468,7 @@ private:
     std::unique_ptr<DesktopLayoutTest> layoutTest;
     std::unique_ptr<DesktopCloseGuard> closeGuard;
     std::unique_ptr<DesktopMediaTest> mediaTest;
+    std::unique_ptr<DesktopMidiSongTest> midiSongTest;
     juce::Component::SafePointer<juce::DialogWindow> desktopSettings;
 	std::unique_ptr<MainWindow> mainWindow;
 	std::unique_ptr<FileLogger> fileLogger;

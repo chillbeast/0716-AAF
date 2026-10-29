@@ -70,8 +70,14 @@ Desktop.4 adds stereo/effects, configurable polyphony and persistent per-instrum
 |---|---|
 | WAV / stems | Current song or scene once, full mix or one track, stereo 48 kHz float32 with effects and a final two-second tail. Internal instruments only; required SF2s stay external. Maximum 30-minute arrangement. |
 | MIDI export | Type 1 SMF, 960 PPQ; scene tempos/markers, notes, supported controllers/pressure/pitch bend, bank/program setup and logical-port metadata. Routing may need adjustment in another app. |
-| MIDI clip import | Additive library patterns by source track/channel, up to 16 bars each, fixed 4/4 sixteenth grid with 48 ticks/quarter resolution. Current song/tempo/assignments are unchanged. Full song, tempo-map, time-signature and SysEx import remain future work. |
+| MIDI clip import | Additive library patterns by source track/channel, up to 16 bars each, fixed 4/4 sixteenth grid with 48 ticks/quarter resolution. Current song/tempo/assignments are unchanged. Arranged song import is available in desktop.6 below. |
 | Export isolation | Snapshot includes unsaved edits; a child engine renders without live clock, audio-device or MIDI access. Cancellation, child failure and locked destination preserve an existing output. |
 | Performance boundary | Main patterns only; live fill/Sculpt/input actions are not captured. Random directions generate a fresh pass. Scene boundaries release notes; only the final scene has a WAV tail. |
 
 Complete SoundFont modulator compatibility, a working Ignite VST and physical MIDI/CV/clock qualification remain outstanding.
+
+## Arranged MIDI songs (desktop.6)
+
+Type 0/1 PPQ MIDI imports as a new song, with assigned named parts, tempo/meter/marker scenes, bank/program selections and GM percussion. Existing work must be saved before switching; existing songs are retained. Imported patterns and instruments save through normal Save All. Fractional scene BPM now survives reopening, and MIDI export includes the saved time signatures.
+
+Notes/events round to 48 ticks/quarter; scene boundaries round to sixteenths and crossing notes retrigger. Meters that exceed the global-bar model retain MIDI metadata with a normalised internal bar grid. SysEx, SMPTE and type 2 independent sequences are not imported. Resource and scene/library limits are validated before song creation. The 103-check setup/song/round-trip/reopen suite covers generated MIDI/SF2 fixtures and actual exported MIDI/audio; see [DEVELOPMENT.md](DEVELOPMENT.md).

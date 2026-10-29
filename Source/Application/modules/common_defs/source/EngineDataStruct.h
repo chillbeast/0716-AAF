@@ -175,6 +175,8 @@ namespace Ignite
 		float sceneTempo = DEFAULT_SONG_TEMPO;
 		std::string sceneName = " ";
 		std::list <Track> trackList;
+		uint8_t desktopMeterNumerator = 4;
+		uint8_t desktopMeterDenominator = 4;
 	};
 
 	struct SongData

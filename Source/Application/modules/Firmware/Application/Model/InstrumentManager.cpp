@@ -1135,6 +1135,19 @@ void InstrumentManager::getParam (moduleId_t moduleSrc, paramId_t param)
 	}
 }
 
+std::string InstrumentManager::addDesktopMidiInstrument(const std::string& displayName,int channel,int bank,int program)
+{
+    if(numberOfInstruments>=255)throw std::runtime_error("The instrument library is full (255 instruments).");
+    std::string name="INSTR"+std::to_string(int(numberOfInstruments)+1);
+    modifyInstrumentNameIfDuplicate(name);
+    instrumentList.emplace_back(numberOfInstruments++,name,int8_t(midiDataIOPorts::usbDevMidi1),int8_t(channel-1),this);
+    auto& d=*instrumentList.back()._instrumentData;
+    d.instrumentDispName=displayName;d.internalSound=true;
+    d.internalSoundPgm=0x40000000|((bank&0xffff)<<7)|(program&127);
+    d.transposeDefeatStatus=channel==10;d.ftsDefeatStatus=channel==10;
+    engine.desktopEdited("instrument:"+name);return name;
+}
+
 std::string InstrumentManager::addInstrument (void)
 {
 	uint8_t port = -1;//set some default value

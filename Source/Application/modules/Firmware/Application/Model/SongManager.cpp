@@ -751,6 +751,8 @@ bool SongManager::populateSongFromFileSystem(int32_t songId)
 				Scene tempScene (sceneInfo.sceneId, savedSceneName, sceneInfo.sceneTempo, sceneInfo.sceneSwing, 0, sceneInfo.trackMuteStatus, this);
 				// update un-initialised fileds
 				tempScene._sceneData->gBarLenInSteps = sceneInfo.gBarLenInSteps;
+                tempScene._sceneData->desktopMeterNumerator=sceneInfo.desktopMeterNumerator;
+                tempScene._sceneData->desktopMeterDenominator=sceneInfo.desktopMeterDenominator;
 				tempScene._sceneData->numBars = sceneInfo.numBars;
 				tempScene._sceneData->mode = sceneInfo.mode;
 				tempScene._sceneData->transposeAfterFTS = sceneInfo.transposeAfterFTS;
@@ -2915,6 +2917,19 @@ int32_t SongManager::identifyNextPlayScene(void)
 		}
 	}
 	return nextSceneId;
+}
+
+void SongManager::installDesktopSong(std::unique_ptr<CSong> song)
+{
+    const int id=numberOfSongs;
+    song->setId(id);song->setEditScene(0);song->editScene->setEditTrack(0);
+    song->setStartSceneId(0);song->setEndSceneId(song->getNumOfScenes()-1);
+    songInfoList.emplace(id,song->getName());++numberOfSongs;
+    activeSong=std::move(song);activeSongId=id;savedActiveSongId=id;
+    ClearUndoList();SetDefaultUndoListData();
+    engine.sceneManager->markSaved();engine.trackManager->resetDesktopHistory();
+    engine.sequenceManager->initSequence();
+    engine.desktopEdited("song");
 }
 
 void SongManager::addSong(CSong& newSong, bool sortScenes, bool reAssignSceneIds)

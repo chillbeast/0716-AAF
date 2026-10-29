@@ -581,7 +581,7 @@ FileHandlerError EngineFileHandler::writeSongInfo(const fs::path& folder, const 
 		DataInfo->setAttribute("songSwing", songData.songSwing);
 		DataInfo->setAttribute("numberOfScenes", songData.numberOfScenes);
 		DataInfo->setAttribute("songId", songData.songId);
-		DataInfo->setAttribute("songTempo", (std::round(songData.songTempo * 10.0) / 10.0));
+		DataInfo->setAttribute("songTempo", songData.songTempo);
 		DataInfo->setAttribute("applySongTempoToScenes", songData.applySongTempoToScenes);
 		DataInfo->setAttribute("applySongSwingToScenes", songData.applySongSwingToScenes);
 		DataXml.addChildElement(DataInfo);
@@ -734,6 +734,8 @@ FileHandlerError EngineFileHandler::writeSceneInfo(const fs::path& folder, const
 		DataInfo->setAttribute("transposeAfterFTS", sceneData.transposeAfterFTS);
 		DataInfo->setAttribute("sceneSwing", sceneData.sceneSwing);
 		DataInfo->setAttribute("gBarLenInSteps", sceneData.gBarLenInSteps);
+        DataInfo->setAttribute("desktopMeterNumerator",sceneData.desktopMeterNumerator);
+        DataInfo->setAttribute("desktopMeterDenominator",sceneData.desktopMeterDenominator);
 		DataInfo->setAttribute("numBars", sceneData.numBars);
 		DataInfo->setAttribute("mode", sceneData.mode);
 		DataInfo->setAttribute("scaleFTS", sceneData.scaleFTS);
@@ -742,7 +744,7 @@ FileHandlerError EngineFileHandler::writeSceneInfo(const fs::path& folder, const
 		DataInfo->setAttribute("numberOfTracks", sceneData.numberOfTracks);
 		DataInfo->setAttribute("sceneId", (int)sceneData.sceneId);
 		DataInfo->setAttribute("trackMuteStatus", (int)sceneData.trackMuteStatus);
-		DataInfo->setAttribute("sceneTempo", (std::round(sceneData.sceneTempo * 10.0) / 10.0));
+		DataInfo->setAttribute("sceneTempo", sceneData.sceneTempo);
 		DataXml.addChildElement(DataInfo);
 		return SafeFileIO::writeFile(folder / (INFO_FILE_NAME + FILE_FORMAT), [&](std::ostream& output) { output << DataXml.toString(); }) ? FILE_OK : FILE_ERROR;
 	}
@@ -778,6 +780,8 @@ SceneData EngineFileHandler::GetSceneInfo(std::string SongName, std::string Scen
 						sceneData.transposeAfterFTS = e->getBoolAttribute("transposeAfterFTS");
 						sceneData.sceneSwing = (int8_t)e->getIntAttribute("sceneSwing");
 						sceneData.gBarLenInSteps = (int8_t)e->getIntAttribute("gBarLenInSteps");
+                        sceneData.desktopMeterNumerator=uint8_t(e->getIntAttribute("desktopMeterNumerator",4));
+                        sceneData.desktopMeterDenominator=uint8_t(e->getIntAttribute("desktopMeterDenominator",4));
 						sceneData.numBars = (uint16_t)e->getIntAttribute("numBars");
 						sceneData.mode = (uint8_t)e->getIntAttribute("mode");
 						sceneData.scaleFTS = (uint8_t)e->getIntAttribute("scaleFTS");
@@ -786,7 +790,7 @@ SceneData EngineFileHandler::GetSceneInfo(std::string SongName, std::string Scen
 						sceneData.numberOfTracks = (uint8_t)e->getIntAttribute("numberOfTracks");
 						sceneData.sceneId = e->getIntAttribute("sceneId");
 						sceneData.trackMuteStatus = e->getIntAttribute("trackMuteStatus");
-						sceneData.sceneTempo = (float)e->getIntAttribute("sceneTempo");
+						sceneData.sceneTempo = (float)e->getDoubleAttribute("sceneTempo");
 					}
 				}
 				handleFailure = false;

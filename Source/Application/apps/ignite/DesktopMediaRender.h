@@ -72,6 +72,10 @@ namespace IgniteDesktop::Media
                 totalSeconds+=seconds;
                 if(totalSeconds>1800)throw std::runtime_error("Export range exceeds the 30-minute limit");
                 auto tempoEvent=juce::MidiMessage::tempoMetaEvent(int(std::llround(60000000.0/tempo)));tempoEvent.setTimeStamp(quarter*960);conductor.addEvent(tempoEvent);
+                const auto& descriptor=*scene._sceneData;
+                const int numerator=descriptor.desktopMeterNumerator,denominator=descriptor.desktopMeterDenominator;
+                if(numerator<1 || numerator>32 || denominator<1 || denominator>32 || (denominator&(denominator-1)))throw std::runtime_error("Invalid scene time signature");
+                auto signature=juce::MidiMessage::timeSignatureMetaEvent(numerator,denominator);signature.setTimeStamp(quarter*960);conductor.addEvent(signature);
                 auto marker=juce::MidiMessage::textMetaEvent(6,juce::String(scene.getName()));marker.setTimeStamp(quarter*960);conductor.addEvent(marker);
                 int64_t sceneFrames=0;
                 for(int64_t pulse=0;pulse<pulses;++pulse)

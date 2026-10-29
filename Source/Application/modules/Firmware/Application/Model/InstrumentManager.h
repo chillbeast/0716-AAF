@@ -34,6 +34,7 @@ namespace Ignite
 		~InstrumentManager() = default;
 
 		std::string addInstrument(void); //call at create instrument page, then call set param for any parameter which are set by user
+        std::string addDesktopMidiInstrument(const std::string& displayName,int channel,int bank,int program);
 		void clearAllInstrument(void);
 		void removeInstrument(std::string instrumentName);
 

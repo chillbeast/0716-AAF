@@ -93,6 +93,7 @@ namespace Ignite
 		static void readAudioFromFile();
 #endif
 		void addSong(CSong& newSong, bool sortScenes, bool reAssignSceneIds);
+        void installDesktopSong(std::unique_ptr<CSong> song);
 		void createAndAddSong(void); //call at create song page, then call set param for any parameer which are set by user
 		void createSongWithRandomData (uint8_t NumOfSongs, uint8_t NumOfScene, uint8_t NumOfTracks, uint8_t numInstrument, uint8_t numPattern, uint8_t numPatternBars);
 		void clearAllSongs (void);

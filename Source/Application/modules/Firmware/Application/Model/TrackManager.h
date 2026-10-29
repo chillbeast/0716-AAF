@@ -40,6 +40,7 @@ namespace Ignite
 		bool IsPatternAssigned (bool isFillPattern, std::string PatternName, std::string SongName, std::string SceneName, std::string TrackName);
 		bool IsInstrumentAssigned (std::string instrumentName, std::string SongName, std::string SceneName, std::string TrackName);
 		void saveTrack ();
+        void resetDesktopHistory(){ClearUndoList();SetDefaultUndoListData();isUndilistNeedUpdate=false;}
 
 	private:
 		IgniteEngine& engine;

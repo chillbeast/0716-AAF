@@ -149,3 +149,29 @@ Desktop.5 regression evidence, relative to `Source/Application/build`:
 | Font/no-font smoke (14) | `smoke/20261028-230217` | - |
 
 Final rebuilt binaries also pass media at `media/20261028-230619` (Release) and `media/20261028-230726` (ASan), and features at `features/20261028-230725` (Release) and `features/20261028-230841` (ASan). Independent RIFF/SMF header checks confirm float32 stereo 48 kHz WAV and type 1, 960-PPQ MIDI. Final sanitizer prefixes are `asan_desktop5` and `asan_desktop5_publish`; neither produces an address-error report. The 22-page manual includes the actual Projects screenshot and documents clip-only import, main-pattern export, random directions, scene release/tail behavior and external sample paths.
+
+## Desktop.6 MIDI song verification
+
+`DesktopMidiSong.h` plans type 0/1 PPQ files into named track/port/channel parts, tempo/meter/marker sections and bounded pattern data before touching the live model. It requires an idle, saved session before installing a new song, with existing songs retained. New instruments/patterns stay in memory until Save All. Editing histories reset to the new selection. GM percussion maps to SF2 bank 128; program changes, controller/bend state and Reset Controllers are handled across scene boundaries.
+
+Meter metadata now travels through SceneData, copies, XML, export snapshots and MIDI conductor tracks. Older files default to 4/4. Fractional scene tempos use double XML reads, and song/scene writers retain float precision. Malformed tempo/meter payloads are validated before JUCE reads their data or converts denominator exponents; clip import shares the checks.
+
+The generated song fixture has four scenes, two parts, fractional tempos, a 4/4-to-3/4 change, marker labels, program/bank changes, drums and crossing notes. The 103-check suite consists of 50 arrangement setup, 41 song checks and 12 reopen checks. It verifies unsaved-work protection, retention of the previous song, saved selection and metadata, MIDI/WAV round trips and durations, type 0 support, type 2/SMPTE rejection, malformed metadata, excess scenes/parts and controller reset state. The runner is `scripts/midi-song-windows.ps1`; use the usual ASan configuration/runtime options. It is included in the combined normal build/check script.
+
+Scene boundaries round to sixteenths and note/event timing to 48 ticks/quarter. Cross-scene notes retrigger; pedal-held notes and release/effect tails are not continuous across scenes. Long/fine meters retain MIDI signatures with a normalised global bar grid. SysEx and original external-synth state are not reconstructed. Physical MIDI/CV/clock and complete SF2 modulation remain unqualified.
+
+Desktop.6 regression evidence, relative to `Source/Application/build`:
+
+| Suite | Release | ASan |
+|---|---|---|
+| MIDI songs (103) | `midi-song/20261029-013613` | `midi-song/20261029-013429` |
+| Media (88) | `media/20261029-013215` | `media/20261029-012814` |
+| Sound (99) | `sound/20261029-013239` | `sound/20261029-012909` |
+| MIDI/save/editor (107) | `correctness/20261029-013312` | `correctness/20261029-013003` |
+| Features (75) | `features/20261029-013330` | `features/20261029-013032` |
+| Layouts (61) | `layout/20261029-013347` | `layout/20261029-013133` |
+| Device/recovery (107) | `workflow/20261029-013403` | `workflow/20261029-013224` |
+| Font/no-font smoke (14) | `smoke/20261029-013417` | - |
+| No-font workflow (91) | - | `workflow/20261029-013610` |
+
+Release/Debug/ASan builds and native checks pass (84/85/84). The final controller-reset change affects song import; its new regression is included in the final 103-check runs above. Final rebuilt feature checks also pass, at Release `features/20261029-013632` and ASan `features/20261029-013508`. The sanitizer prefixes `asan_song6`, `asan_song6_regression` and `asan_song6_publish` produce no address-error report. The manual has 23 pages and an actual Projects screenshot. Counts overlap through repeated setup; physical I/O and complete external-synth equivalence are not established.
