@@ -130,7 +130,7 @@ namespace Ignite
 		std::vector<IgniteParamList> getParamList(moduleId_t moduleSrc, std::vector<IgniteParamList>& paramlist)override;
 		void getParam(moduleId_t moduleSrc, paramId_t param)override;
 
-		void saveSongData(void);
+		bool saveSongData(void);
 		bool saveSong(void);
 		bool saveSong(CSong& song);
 		bool populateSongFromFileSystem(int32_t id);

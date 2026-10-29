@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <mutex>
+#include "DesktopChanges.h"
 #include "Common/Os/CrossPlatform/CThread.h"
 #include "Common/Modules/IModule.h"
 #include "common_defs/source/IgniteMessage.h"
@@ -100,6 +101,11 @@ namespace Ignite
 		int8_t getSceneBarCount(void);
 		int8_t getSceneGbarStepCount(void);
 		bool _autoSaveStatus = false;//TODO : save in settings file .. based on UI
+		DesktopChanges desktopChanges;
+		void onParameterEdited(ParameterBase* parameter) override;
+		void desktopEdited(const std::string& key) { auto lock=lockDesktopState(); desktopChanges.edited(key); }
+		void desktopSaved(const std::string& key) { auto lock=lockDesktopState(); desktopChanges.saved(key); }
+		bool desktopHasUnsavedChanges() { auto lock=lockDesktopState(); return desktopChanges.dirty(); }
 		void setAutoSaveAllModules(bool status);
 		bool getAutoSaveStatus(void);
 		std::list<PatternDataUpdateReasonType> EnginePatternGetUndoList (void);

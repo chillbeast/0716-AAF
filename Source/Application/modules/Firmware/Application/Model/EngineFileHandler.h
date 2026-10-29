@@ -113,6 +113,7 @@ namespace Ignite
 		bool isGetDataCorrupted() { return isDataCorrupted;};
 
 	private:
+		bool writeXmlAtomic(const std::filesystem::path&,const juce::XmlElement&);
 		FileHandlerError writeSongInfo(const std::filesystem::path&, const SongData&);
 		FileHandlerError writeScene(const std::filesystem::path&, const SceneData&);
 		FileHandlerError writeSceneInfo(const std::filesystem::path&, const SceneData&);

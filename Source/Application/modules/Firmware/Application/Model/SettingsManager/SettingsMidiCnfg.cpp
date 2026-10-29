@@ -181,7 +181,8 @@ void SettingsMidiCnfg::onParameterChange (moduleId_t moduleSrc, ParameterBase* p
 		(SettingsMidiCnfgParam)param->GetParamID () != SettingsMidiCnfgParam::paramUndoCmd
 		)
 	{
-		if (_UndoSettingsMidiCnfgDataList.size () > MAX_SETTINGS_UNDO_COUNT) // NOTE: UndoDataList last param is Default Data
+		engine.onParameterEdited(param);
+        if (_UndoSettingsMidiCnfgDataList.size () > MAX_SETTINGS_UNDO_COUNT) // NOTE: UndoDataList last param is Default Data
 		{
 			auto it = _UndoSettingsMidiCnfgDataList.end ();
 			it--;
@@ -204,12 +205,12 @@ void SettingsMidiCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param,
 	switch ((SettingsMidiCnfgParam)param->GetParamID ())
 	{
 		case SettingsMidiCnfgParam::paramUndoCmd:
-			_settingsMidiCnfgData = (*(_UndoSettingsMidiCnfgDataList.begin ()));
-			if (_UndoSettingsMidiCnfgDataList.size () != 1)
-			{
-				_UndoSettingsMidiCnfgDataList.erase (_UndoSettingsMidiCnfgDataList.begin ());
-			}
-			break;
+            if(_UndoSettingsMidiCnfgDataList.size()>1)
+            {
+                _settingsMidiCnfgData=_UndoSettingsMidiCnfgDataList.front();
+                _UndoSettingsMidiCnfgDataList.erase(_UndoSettingsMidiCnfgDataList.begin());
+            }
+            break;
 
 		case SettingsMidiCnfgParam::SettingDataLocation:
 		{
@@ -247,9 +248,15 @@ void SettingsMidiCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param,
 			break;
 
 		case SettingsMidiCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (_UndoSettingsMidiCnfgDataList.empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsMidiCnfgParam::paramSaveMidiCnfgSetting:
 			_settingsMidiCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
 			SaveData();
@@ -273,7 +280,7 @@ void SettingsMidiCnfg::SaveData()
 {
 	if (_UndoSettingsMidiCnfgDataList.empty())
 		return;
-	engine.fileHandler->UpdateMidiCnfgSetting(_settingsMidiCnfgData, (_settingsMidiCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->UpdateMidiCnfgSetting(_settingsMidiCnfgData, (_settingsMidiCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	_UndoSettingsMidiCnfgDataList.clear();
 	_UndoSettingsMidiCnfgDataList.insert(_UndoSettingsMidiCnfgDataList.begin(), _settingsMidiCnfgData);
 }
@@ -315,4 +322,15 @@ MidiConfig SettingsMidiCnfg::getMidiConfigForPortId(int8_t portId)
 	}
 	MidiConfig tmp;
 	return tmp;
+}
+
+// Explicit desktop save does not change the selected storage location.
+bool SettingsMidiCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateMidiCnfgSetting(_settingsMidiCnfgData, (_settingsMidiCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    _UndoSettingsMidiCnfgDataList.clear(); _UndoSettingsMidiCnfgDataList.push_back(_settingsMidiCnfgData);
+    return true;
 }

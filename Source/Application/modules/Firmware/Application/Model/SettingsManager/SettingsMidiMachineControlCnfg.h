@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsMidiMachineControlCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsMidiMachineControlCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsMidiMachineControlCnfg (const SettingsMidiMachineControlCnfg&) = delete;
 		SettingsMidiMachineControlCnfg& operator= (const SettingsMidiMachineControlCnfg&) = delete;

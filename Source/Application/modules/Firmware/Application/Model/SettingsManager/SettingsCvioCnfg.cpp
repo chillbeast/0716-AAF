@@ -483,11 +483,12 @@ void SettingsCvioCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param,
 	switch ((SettingsCvioCnfgParam)param->GetParamID ())
 	{
 		case SettingsCvioCnfgParam::paramUndoCmd:
-			if (_UndoSettingsCvioCnfgDataList.size () != 1)
+			if (_UndoSettingsCvioCnfgDataList.size () > 1)
 			{
+				engine.onParameterEdited(param);
 				_UndoSettingsCvioCnfgDataList.erase (_UndoSettingsCvioCnfgDataList.begin ());
+				_SettingsCvioCnfgData = _UndoSettingsCvioCnfgDataList.front();
 			}
-			_SettingsCvioCnfgData = (*(_UndoSettingsCvioCnfgDataList.begin ()));
 			break;
 		case SettingsCvioCnfgParam::paramActiveCVPort:
 			_activeCVPort = param->getValue ().get<uint8_t> ();
@@ -698,11 +699,17 @@ void SettingsCvioCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param,
 			_calibOffsetData->getReference(_activeCVCalibPort).calibOffset[9] = param->getValue().get<float>();
 			break;
 
-		case SettingsCvioCnfgParam::paramSaveAll: 
+		case SettingsCvioCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (!_UndoSettingsCvioCnfgDataList.empty())
 				SaveData();
 			break;
 			//fallthrough
+#endif
+
 		case SettingsCvioCnfgParam::paramSaveCvioSetting:
 			_SettingsCvioCnfgData.DataLocation = param->getValue().get<int8_t>();
 			SaveData();
@@ -722,6 +729,7 @@ void SettingsCvioCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param,
 	}
 	if (!isPlayMode &&
 		(moduleSrc != (moduleId_t)ModuleName::moduleUndo) &&
+		(SettingsCvioCnfgParam)param->GetParamID() != SettingsCvioCnfgParam::paramSaveAll &&
 		(SettingsCvioCnfgParam)param->GetParamID() != SettingsCvioCnfgParam::paramSaveCvioSetting &&
 		(SettingsCvioCnfgParam)param->GetParamID () != SettingsCvioCnfgParam::paramSaveCvioCalibSetting &&
 		(SettingsCvioCnfgParam)param->GetParamID() != SettingsCvioCnfgParam::SettingDataLocation &&
@@ -743,6 +751,7 @@ void SettingsCvioCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param,
 		(SettingsCvioCnfgParam)param->GetParamID () != SettingsCvioCnfgParam::paramUndoCmd
 		)
 	{
+		engine.onParameterEdited(param);
 		if (_UndoSettingsCvioCnfgDataList.size () > MAX_SETTINGS_UNDO_COUNT) // NOTE: UndoDataList last param is Default Data
 		{
 			auto it = _UndoSettingsCvioCnfgDataList.end ();
@@ -766,7 +775,7 @@ void SettingsCvioCnfg::SaveData()
 {
 	if (_UndoSettingsCvioCnfgDataList.empty())
 		return;
-	engine.fileHandler->UpdateCvioCnfgSetting(_SettingsCvioCnfgData, (_SettingsCvioCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->UpdateCvioCnfgSetting(_SettingsCvioCnfgData, (_SettingsCvioCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	_UndoSettingsCvioCnfgDataList.clear();
 	_UndoSettingsCvioCnfgDataList.insert(_UndoSettingsCvioCnfgDataList.begin(), _SettingsCvioCnfgData);
 	engine.fileHandler->UpdateCalibData(_calibOffsetData);
@@ -887,4 +896,14 @@ std::string SettingsCvioCnfg::getActiveSongName ()
 		return (engine.songManager->activeSong->getName ());
 
 	return("");
+}
+// Explicit desktop save does not change the selected storage location.
+bool SettingsCvioCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateCvioCnfgSetting(_SettingsCvioCnfgData, (_SettingsCvioCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    _UndoSettingsCvioCnfgDataList.clear(); _UndoSettingsCvioCnfgDataList.push_back(_SettingsCvioCnfgData);
+    return true;
 }

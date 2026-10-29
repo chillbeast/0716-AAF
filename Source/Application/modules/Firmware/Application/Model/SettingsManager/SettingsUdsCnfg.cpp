@@ -284,12 +284,19 @@ void SettingsUdsCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param, 
 			//engine.fileHandler->GetSettingsUdsCnfgDataSetting (&_settingsUdsCnfgData, ""); // Load saved data
 			break;
 		case SettingsUdsCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsUdsCnfgParam::SettingsUdsCnfgSaveParam:
 			_settingsUdsCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
-			break;
+			SaveData();
+            break;
 		case SettingsUdsCnfgParam::SettingDataLocation:
 			_settingsUdsCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
 			engine.fileHandler->GetSettingsUdsCnfgDataSetting (&_settingsUdsCnfgData, (_settingsUdsCnfgData.DataLocation ? getActiveSongName () : ""));
@@ -399,7 +406,7 @@ void SettingsUdsCnfg::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->UpdateSettingsUdsCnfgData(_settingsUdsCnfgData, (_settingsUdsCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->UpdateSettingsUdsCnfgData(_settingsUdsCnfgData, (_settingsUdsCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	ClearUndoList();
 	isUndilistNeedUpdate = true;
 }
@@ -545,4 +552,14 @@ void SettingsUdsCnfg::updateUdsNotesToGlobalScaleList (int8_t index, std::vector
 	auto position = static_cast <ScaleList> (static_cast<int8_t> (ScaleList::ScaleUD1) + index);
 
 	ftsList[position].scaleIntervalList = intervalList;
+}
+
+// Explicit desktop save does not change the selected storage location.
+bool SettingsUdsCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateSettingsUdsCnfgData(_settingsUdsCnfgData, (_settingsUdsCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    return true;
 }

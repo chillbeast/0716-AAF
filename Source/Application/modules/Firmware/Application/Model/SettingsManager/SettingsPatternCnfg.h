@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsPatternCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsPatternCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsPatternCnfg (const SettingsPatternCnfg&) = delete;
 		SettingsPatternCnfg& operator= (const SettingsPatternCnfg&) = delete;

@@ -16,10 +16,10 @@ Module ("SettingsSculptModeCnfg", (moduleId_t)ModuleName::moduleSettingsSculptMo
 	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptMode, (int8_t)SculptMode::none, (int8_t)SculptMode::randomAbsolute, (int8_t)SculptMode::absolute);
 	AddParameter<uint8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptParameterSelection, 0, 0xF, 1);
 
-	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRelativeVelocity, 0, 127, 0);
+	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRelativeVelocity, -127, 127, 0);
 	//AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRelativeLengthSteps, 0, 127, 0);
 	//AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRelativeLengthTicks, 0, 127, 0);
-	AddParameter<int8_t>((paramId_t)SettingsSculptModeCnfgParam::sculptRelativeNote, 0, 127, 0);
+	AddParameter<int8_t>((paramId_t)SettingsSculptModeCnfgParam::sculptRelativeNote, -127, 127, 0);
 	//AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRelativeDelay, 0, 127, 0);
 
 	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptAbsoluteVelocity, 0, 127, 0);
@@ -28,14 +28,14 @@ Module ("SettingsSculptModeCnfg", (moduleId_t)ModuleName::moduleSettingsSculptMo
 	AddParameter<int8_t>((paramId_t)SettingsSculptModeCnfgParam::sculptAbsoluteNote, 0, 127, 0);
 	//AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptAbsoluteDelay, 0, 127, 0);
 
-	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeVelocityStart, 0, 127, 0);
-	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeVelocityEnd, 0, 127, 127);
+	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeVelocityStart, -127, 127, 0);
+	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeVelocityEnd, -127, 127, 127);
 	//AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeLengthStepStart, 0, 127, 0);
 	//AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeLengthStepEnd, 0, 127, 127);
 	//AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeLengthTickStart, 0, 127, 0);
 	//AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeLengthTickEnd, 0, 127, 0);
-	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeNoteStart, 0, 127, 0);
-	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeNoteEnd, 0, 127, 127);
+	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeNoteStart, -127, 127, 0);
+	AddParameter<int8_t> ((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeNoteEnd, -127, 127, 127);
 	//AddParameter<int8_t>((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeDelayStart, -16, 15, 0);
 	//AddParameter<int8_t>((paramId_t)SettingsSculptModeCnfgParam::sculptRandomRelativeDelayEnd, -16, 15, 0);
 
@@ -293,7 +293,8 @@ void SettingsSculptModeCnfg::onParameterChange (moduleId_t moduleSrc, ParameterB
 		(SettingsSculptModeCnfgParam)param->GetParamID () != SettingsSculptModeCnfgParam::paramUndoCmd
 		)
 	{
-		if (_UndoSettingsSculptModeCnfgDataList.size () > MAX_SETTINGS_UNDO_COUNT) // NOTE: UndoDataList last param is Default Data
+		engine.onParameterEdited(param);
+        if (_UndoSettingsSculptModeCnfgDataList.size () > MAX_SETTINGS_UNDO_COUNT) // NOTE: UndoDataList last param is Default Data
 		{
 			auto it = _UndoSettingsSculptModeCnfgDataList.end ();
 			it--;
@@ -321,12 +322,12 @@ void SettingsSculptModeCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* 
 			engine.fileHandler->GetSettingsSculptModeCnfgDataSetting (&_SettingsSculptModeCnfgData, (_SettingsSculptModeCnfgData.DataLocation ? getActiveSongName () : ""));
 			break;
 		case SettingsSculptModeCnfgParam::paramUndoCmd:
-			_SettingsSculptModeCnfgData = (*(_UndoSettingsSculptModeCnfgDataList.begin ()));
-			if (_UndoSettingsSculptModeCnfgDataList.size () != 1)
-			{
-				_UndoSettingsSculptModeCnfgDataList.erase (_UndoSettingsSculptModeCnfgDataList.begin ());
-			}
-			break;
+            if(_UndoSettingsSculptModeCnfgDataList.size()>1)
+            {
+                _SettingsSculptModeCnfgData=_UndoSettingsSculptModeCnfgDataList.front();
+                _UndoSettingsSculptModeCnfgDataList.erase(_UndoSettingsSculptModeCnfgDataList.begin());
+            }
+            break;
 
 		case SettingsSculptModeCnfgParam::sculptMode:
 			_SettingsSculptModeCnfgData.sculptMode = static_cast <SculptMode>(param->getValue ().get<int8_t> ());
@@ -429,9 +430,15 @@ void SettingsSculptModeCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* 
 			break;
 
 		case SettingsSculptModeCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (_UndoSettingsSculptModeCnfgDataList.empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsSculptModeCnfgParam::settingSculptConfigSave:
 			_SettingsSculptModeCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
 			SaveData();
@@ -463,8 +470,19 @@ void SettingsSculptModeCnfg::SaveData()
 {
 	if (_UndoSettingsSculptModeCnfgDataList.empty())
 		return;
-	engine.fileHandler->UpdateSettingsSculptModeCnfgData(_SettingsSculptModeCnfgData, (_SettingsSculptModeCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->UpdateSettingsSculptModeCnfgData(_SettingsSculptModeCnfgData, (_SettingsSculptModeCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	_UndoSettingsSculptModeCnfgDataList.clear();
 	_UndoSettingsSculptModeCnfgDataList.insert(_UndoSettingsSculptModeCnfgDataList.begin(), _SettingsSculptModeCnfgData);
 }
 
+
+// Explicit desktop save does not change the selected storage location.
+bool SettingsSculptModeCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateSettingsSculptModeCnfgData(_SettingsSculptModeCnfgData, (_SettingsSculptModeCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    _UndoSettingsSculptModeCnfgDataList.clear(); _UndoSettingsSculptModeCnfgDataList.push_back(_SettingsSculptModeCnfgData);
+    return true;
+}

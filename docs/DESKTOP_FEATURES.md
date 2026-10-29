@@ -26,6 +26,14 @@ Assign the matching input port and channel to a track's receive instrument, and 
 
 The automated tests inject MIDI into the same router used by device callbacks. They check all 16 logical input/output IDs, channel filtering, step entry, live note velocity/duration, saving and reopening. No MIDI input devices were available during this pass, so physical controller input, Windows driver behavior, external clock timing and external hardware output remain unverified.
 
+Internal synthesis now responds to sustain, pitch bend/RPN range, volume/expression, bank/program, modulation and pressure. Modulation/pressure use a basic vibrato mapping. All Notes Off honors sustain; All Sound Off clears the track voices/effects. Panic permits subsequent notes without reloading the bank. Custom SF2 modulator matrices are not fully implemented.
+
+## Saving and editor fixes
+
+Closing with pending edits offers Save, Discard and Cancel. Save All writes every loaded pattern/instrument plus the active song and firmware settings, preserving song-scoped settings. Failed writes keep pending changes and stop close/backup export. Settings use atomic file replacement; the complete save is still several independent file operations.
+
+In Pattern view, Ctrl+Insert inserts a blank step and shifts later notes across bars, with undo and a 256-step limit. Gang velocity selection, signed Sculpt modes, pitch-map changes, MIDI/Sculpt settings undo, scale snapping and fill release have regression coverage. Other view-specific hardware key behavior remains available.
+
 ## SoundFonts
 
 ![Actual SoundFont preset browser with a generated non-GM test bank](images/desktop-soundfonts.png)

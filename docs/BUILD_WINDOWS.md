@@ -74,8 +74,10 @@ Debug uses the same build tree with `--config Debug`. The inherited UI retains m
 
 The manual source is `docs/manual/USER_MANUAL.md`. To regenerate its self-contained HTML and PDF, install Python-Markdown (`python -m pip install Markdown`), then run `python scripts/build-manual.py --pdf`. PDF rendering uses an installed Edge/Chrome browser in headless mode with a separate temporary profile; `--browser` selects another Chromium executable. These tools are only needed for documentation development.
 
-After committing the release source, create the versioned Windows package with `scripts/package-windows.ps1 -Version v0.3.3-desktop.2`. It includes the tested Release executable, assets, manual, license, release notes and corresponding source. `BUILD.json` records the source commit, whether the checkout is dirty and the executable SHA-256. The ZIP builder checks its entries and CRCs and refuses included SF2 files.
+After committing the release source, create the versioned Windows package with `scripts/package-windows.ps1 -Version v0.3.3-desktop.3`. It includes the tested Release executable, assets, manual, license, release notes and corresponding source. `BUILD.json` records the source commit, whether the checkout is dirty and the executable SHA-256. The ZIP builder checks its entries and CRCs and refuses included SF2 files.
 
 ## Device build boundary
 
 The hardware uses an i.MX8M Mini/Cortex-A53 platform. See [Linux/README.md](../Linux/README.md) for Buildroot and SDK instructions. Device-image work requires a Linux host plus replacements for omitted MCU firmware, Wi-Fi firmware and the proprietary PC transfer service. No device image has been built or flashed in this pass. CV/Gate, DIN ports, sync jacks, firmware updates and hardware calibration need physical acceptance tests.
+
+The MIDI/save/editor correctness suite is `scripts/correctness-windows.ps1 -Configuration Release`. It generates an original four-preset SF2, checks audio/controller behavior, editor transforms and locked-file save failures, and reopens the saved state in a separate process. Use `-BuildDirectory asan -Configuration RelWithDebInfo` with the MSVC ASan runtime on PATH to run the same suite under AddressSanitizer.

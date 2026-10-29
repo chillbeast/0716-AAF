@@ -1,10 +1,10 @@
 ﻿# IGNITE Desktop Simulator
 
-**User manual · Community release v0.3.3-desktop.2 · 28 October 2026**
+**User manual · Community release v0.3.3-desktop.3 · 28 October 2026**
 
 IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with compact and hardware layouts, plus desktop audio, MIDI, SoundFont and backup controls. Both layouts run the actual firmware touchscreen and the same panel controls.
 
-This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.2` identifies this community release.
+This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.3` identifies this community release.
 
 ![IGNITE simulator compact layout with a large live touchscreen](../images/ignite-compact.png)
 
@@ -27,7 +27,7 @@ This is an independent community build of Music Tribe's open-source release. It 
 
 ## 1. Install and launch
 
-Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.2). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
+Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.3). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
 
 The package is portable and does not require an installer, Visual Studio or a Python installation to run. Development tools are needed only to rebuild it. A working Windows audio output is required to hear internal sound. Supply your own `.sf2` SoundFont; sample banks are not included.
 
@@ -126,13 +126,15 @@ A note event includes pitch, velocity, length in steps/ticks and a tick offset. 
 
 Bar operations include copying, appending, duplicating, inserting and removing. The desktop regression suite covers independent copies, correct note/step positions, the 16-bar cap and retaining at least one bar. Save a backup before a large rearrangement.
 
+In the Pattern view, **Ctrl+Insert** inserts one blank step before the selected step. Later events shift across bar boundaries; the active length and bar count grow as needed, up to 256 steps. Undo restores the previous pattern. The hardware INSERT button retains its view-specific note/event behavior.
+
 Auxiliary events, triplet time bases and the broader editing tools exist in the source. Coverage varies by operation; see the feature-status table rather than assuming every combination was exercised.
 
 ## 6. Playback and performance
 
 PLAY starts or resumes the current arrangement; STOP ends the current transport action. The firmware decides the precise behavior from its current transport state. Pause/resume, tempo changes and normal stop commands are covered by desktop workflow tests.
 
-The front panel also exposes NEXT/TIE, FILL/X, SOLO/SKIP, GANG and SCULPT. These depend on the active view and track/pattern configuration. The source contains main/fill patterns, grouped operations, scale/transpose transforms and sculpt changes to notes and velocities. Their presence is documented from code; this release does not certify every performance combination.
+The front panel also exposes NEXT/TIE, FILL/X, SOLO/SKIP, GANG and SCULPT. These depend on the active view and track/pattern configuration. The source contains main/fill patterns, grouped operations, scale/transpose transforms and sculpt changes to notes and velocities. Regression coverage includes gang velocity selection, signed relative and absolute Sculpt edits, random relative offsets, pitch moves, MIDI/Sculpt settings undo, fill mute/release rules, scale snapping across octave boundaries, transform priority and MIDI-range clamping. The tests exercise the real engine and selected UI editing paths; every performance combination and external timing behavior has not been qualified.
 
 Start with the internal clock. Source settings also cover MIDI clock, MIDI Machine Control, remote control and sync connections. Timing accuracy against external equipment has not been measured. Selecting an external clock source without providing that clock can leave playback waiting.
 
@@ -192,6 +194,8 @@ The interface uses channels 1–16; internal data stores them as 0–15. A chann
 
 Routes and the monitoring option save automatically. If startup reports a missing device, reconnect it, refresh and select the route again. Avoid routing an output back to its own input unless you deliberately want that loop and have configured filtering.
 
+The internal synth handles sustain (CC64), channel volume (CC7/39), expression (CC11/43), bank select (CC0/32) plus program change, pitch bend and RPN bend range, modulation wheel, channel pressure and polyphonic pressure. Modulation and pressure add a basic vibrato mapping; this is not a complete SoundFont modulator-matrix implementation. Controllers are scoped to the routed track. CC121 resets expression, sustain, bend position, modulation and pressure while retaining volume, pan and the chosen bank/program. CC123 releases notes subject to sustain; CC120 stops sound immediately and clears the track effects. Panic clears notes and leaves the synth playable.
+
 No MIDI input devices were connected for release testing. Internal messages exercised the same router entry point and all 16 logical port IDs; physical controllers, driver behavior, external output and external-clock timing remain unverified.
 
 ## 10. Step and live recording
@@ -220,7 +224,11 @@ The test checks an armed track, captured velocity/duration, stopping immediately
 
 ## 11. Save, export and restore
 
-Press **SAVE / Ctrl+S** before closing. The desktop build does not add an automatic save prompt. Save All includes the latest pattern edits and scene-only changes in the repaired desktop paths.
+Press **SAVE / Ctrl+S** to save the active song, all loaded patterns and instruments, and the firmware settings at their selected global or song location. This includes library items edited before switching to another item.
+
+Closing a window or quitting with pending edits offers **Save**, **Discard**, or **Cancel**. Save closes only after all required writes succeed. A failed save keeps Ignite open with the pending changes available for retry; fix the file permissions or storage problem and save again. Discard leaves the saved files as they are; Cancel keeps the session open. Writes already completed by automatic or individual saves remain on disk. Undo may conservatively leave a pending-change indication even after returning to an earlier value.
+
+Settings files use temporary-file replacement. Save All spans several files and is not one transaction: a failure can leave some items saved while others still need a retry. Backup export stops if the preceding save fails.
 
 Windows data is stored separately from the extracted application:
 
@@ -288,10 +296,11 @@ See [Windows build instructions](../BUILD_WINDOWS.md) for Visual Studio, CMake, 
 
 ```powershell
 .\scripts\features-windows.ps1 -Configuration Release
+.\scripts\correctness-windows.ps1 -Configuration Release
 .\scripts\workflow-windows.ps1 -Configuration Release -NodeEdit -AudioDevice -SimulateInterruptedSave
 ```
 
-Tests use disposable directories under the ignored build tree. The release was checked with **54 native Release/ASan checks**, **55 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **91 no-font workflow checks under ASan**, **seven smoke checks per font/no-font case**, and **five packet-protocol checks**. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
+Tests use disposable directories under the ignored build tree. The release was checked with **82 native Release/ASan checks**, **83 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **61 layout checks**, **91 no-font workflow checks under ASan**, **seven smoke checks per font/no-font case**, and **five packet-protocol checks**. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
 
 The separate AudIO, DAW and Airwindows libraries also build, but the main app uses its firmware TinySoundFont path. Detailed evidence and remaining audit items are in [AUDIT_FIXES.md](../AUDIT_FIXES.md), [CAPABILITIES.md](../CAPABILITIES.md) and [DEVELOPMENT.md](../DEVELOPMENT.md).
 

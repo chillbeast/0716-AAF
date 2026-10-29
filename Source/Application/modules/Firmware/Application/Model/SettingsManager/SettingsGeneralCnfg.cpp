@@ -219,11 +219,17 @@ void SettingsGeneralCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* par
 			doParamUndo ();
 			break;
 		case SettingsGeneralCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsGeneralCnfgParam::SettingDeviceCnfgSave:
-			engine.fileHandler->UpdateSettingsGeneralCnfgData (_SettingsGeneralCnfgData);
+			if (engine.fileHandler->UpdateSettingsGeneralCnfgData (_SettingsGeneralCnfgData) != FILE_OK) break;
 			ClearUndoList ();
 			isUndilistNeedUpdate = true;
 			break;
@@ -284,13 +290,24 @@ void SettingsGeneralCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* par
 	}
 	//todo - need to save ?
 	{
-		engine.fileHandler->UpdateSettingsGeneralCnfgData(_SettingsGeneralCnfgData);
-		ClearUndoList();
-		isUndilistNeedUpdate = true;
+		if (engine.fileHandler->UpdateSettingsGeneralCnfgData(_SettingsGeneralCnfgData) == FILE_OK)
+		{
+			ClearUndoList();
+			isUndilistNeedUpdate = true;
+		}
 	}
 	if (SendNotification)
 	{
 		/* Send notification to the subscribed modules via engine */
 		paramlistener->onParameterChanged (moduleSrc, param);
 	}
+}
+// Explicit desktop save does not change the selected storage location.
+bool SettingsGeneralCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateSettingsGeneralCnfgData(_SettingsGeneralCnfgData);
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    return true;
 }

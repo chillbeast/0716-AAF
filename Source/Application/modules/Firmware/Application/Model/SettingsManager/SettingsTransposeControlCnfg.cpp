@@ -189,9 +189,15 @@ void SettingsTransposeControlCnfg::ParamHandler (moduleId_t moduleSrc, Parameter
 			break;
 
 		case SettingsTransposeControlCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsTransposeControlCnfgParam::paramTransposeControlCnfgSave:
 			_transposeControlCnfgData.dataLocation = (param->getValue ().get<int8_t> ());
 
@@ -240,7 +246,16 @@ void SettingsTransposeControlCnfg::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->updateSettingsTransposeControlCnfgData(&_transposeControlCnfgData, (_transposeControlCnfgData.dataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->updateSettingsTransposeControlCnfgData(&_transposeControlCnfgData, (_transposeControlCnfgData.dataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	ClearUndoList();
 	isUndilistNeedUpdate = true;
+}
+// Explicit desktop save does not change the selected storage location.
+bool SettingsTransposeControlCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->updateSettingsTransposeControlCnfgData(&_transposeControlCnfgData, (_transposeControlCnfgData.dataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    return true;
 }

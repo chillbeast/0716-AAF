@@ -63,6 +63,27 @@ const fs::path instruments_path{ root_work_path / INSTRUMENTS_FOLDER_NAME };
 const fs::path patterns_path{ root_work_path / PATTERNS_FOLDER_NAME };
 const fs::path settings_path{ root_work_path / SETTINGS_FOLDER_NAME };
 
+bool EngineFileHandler::writeXmlAtomic(const fs::path& path,const juce::XmlElement& xml)
+{
+    auto stateLock=engine.lockDesktopState();
+    const auto data=xml.toString().toStdString();
+    const bool saved=SafeFileIO::writeFile(path,[&](std::ostream& stream) {stream<<data;});
+    if(!saved) engine.desktopChanges.writeFailed();
+    else
+    {
+        const std::pair<std::string,int> settings[]{
+            {MIDICNFG_FILE_NAME,9},{CVIOCNFG_FILE_NAME,10},{SETTINGCNFG_FILE_NAME,11},
+            {SETTING_SONG_CNFG_FILE_NAME,12},{SETTING_SCENE_CNFG_FILE_NAME,13},{SETTING_TRACK_CNFG_FILE_NAME,14},
+            {SETTING_PATTERN_CNFG_FILE_NAME,16},{SETTING_RECORD_CNFG_FILE_NAME,17},{SETTING_BRAY_CNFG_FILE_NAME,18},
+            {SETTING_REMOTE_SETTING_CNFG_FILE_NAME,19},{SETTING_REMOTE_SETTING_SCLUPT_FILE_NAME,20},
+            {SETTING_UDS_SETTING_FILE_NAME,21},{SETTING_MIDI_CLK_CNFG_FILE_NAME,22},
+            {SETTING_MIDI_XPOSE_CNFG_FILE_NAME,23},{SETTING_MIDI_MACHINE_CNFG_FILE_NAME,24}};
+        for(const auto& setting:settings) if(path.filename()==setting.first+FILE_FORMAT)
+            engine.desktopSaved("settings:"+std::to_string(setting.second));
+    }
+    return saved;
+}
+
 #ifdef _WIN64
 const fs::path root_path_backup_external{ root_path / "Ignite_folder_backup" };// external and internal same for windows to avoid error
 #endif
@@ -182,7 +203,7 @@ void EngineFileHandler::SetSystemStatus(uint8_t _securePowerOffStatus, uint8_t _
 {
 	if (exists(root_work_path / (SYM_STATUS_NAME + FILE_FORMAT)))
 	{
-		std::ofstream infofile(root_path / (SYM_STATUS_NAME + FILE_FORMAT), std::ofstream::binary);
+		const auto savePath=root_path / (SYM_STATUS_NAME + FILE_FORMAT);
 		XmlElement DataXml("SyStemStatus");
 		XmlElement* DataInfo = new XmlElement("Info");
 		DataInfo->setAttribute("FILE_VERSION", FILE_VERSION);
@@ -190,9 +211,7 @@ void EngineFileHandler::SetSystemStatus(uint8_t _securePowerOffStatus, uint8_t _
 		DataInfo->setAttribute("isBackupToBeDone", _isBackupToBeDone);
 		DataInfo->setAttribute("failBootCount", _failBootCount);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.flush();
-		infofile.close();
+		writeXmlAtomic(savePath,DataXml);
 	}
 }
 std::string EngineFileHandler::getBackUPPathFromId(uint8_t DataFolderId)
@@ -444,10 +463,7 @@ bool EngineFileHandler::RestoreBackUP(uint8_t DataFolderId)
 //Add multiple params/struct if required in future, update the argument list as required
 FileHandlerError EngineFileHandler::updateMainInfo(mainInfoData info)
 {
-	std::ofstream infofile(root_work_path / (INFO_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-
-	if (!infofile)
-		return FILE_ERROR;
+	const auto savePath=root_work_path / (INFO_FILE_NAME + FILE_FORMAT);
 
 	XmlElement DataXml("mainInfoData");
 	XmlElement* DataInfo = new XmlElement("Info");
@@ -455,9 +471,7 @@ FileHandlerError EngineFileHandler::updateMainInfo(mainInfoData info)
 	DataInfo->setAttribute("activeSongId", info.activeSongId);
 	DataInfo->setAttribute("masterVolume", info.masterVolume);
 	DataXml.addChildElement(DataInfo);
-	infofile << DataXml.toString();
-	infofile.flush();
-	infofile.close();
+	if(!writeXmlAtomic(savePath,DataXml)) return FILE_ERROR;
 	return FILE_OK;
 }
 
@@ -1266,12 +1280,7 @@ FileHandlerError EngineFileHandler::updatePatternInfo(std::string patternName, P
 {
 	if (exists(patterns_path / patternName))
 	{
-		std::ofstream infofile(patterns_path / patternName / (INFO_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-
-		if (!infofile)
-		{
-			return FILE_ERROR;
-		}
+		const auto savePath=patterns_path / patternName / (INFO_FILE_NAME + FILE_FORMAT);
 		XmlElement DataPatternXml("pattern");
 		XmlElement* DataInfo = new XmlElement("pattern_info");
 		DataInfo->setAttribute("FILE_VERSION", FILE_VERSION);
@@ -1298,9 +1307,7 @@ FileHandlerError EngineFileHandler::updatePatternInfo(std::string patternName, P
 			}
 		}
 		DataPatternXml.addChildElement(DataInfo);
-		infofile << DataPatternXml.toString();
-		infofile.flush();
-		infofile.close();
+		if(!writeXmlAtomic(savePath,DataPatternXml)) return FILE_ERROR;
 		return FILE_OK;
 	}
 	return FILE_EXISTS;
@@ -1787,9 +1794,8 @@ FileHandlerError EngineFileHandler::UpdateMidiCnfgSetting(SettingsMidiCnfgData s
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (MIDICNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (MIDICNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("MidiCnfg");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -1808,9 +1814,8 @@ FileHandlerError EngineFileHandler::UpdateMidiCnfgSetting(SettingsMidiCnfgData s
 		}
 		DataInfo->setAttribute("DataLocation", settingsMidiCnfgData.DataLocation);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -1879,9 +1884,8 @@ FileHandlerError EngineFileHandler::UpdateCvioCnfgSetting(SettingsCvioCnfgData s
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (CVIOCNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (CVIOCNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("CvioCnfgS");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -1943,10 +1947,8 @@ FileHandlerError EngineFileHandler::UpdateCvioCnfgSetting(SettingsCvioCnfgData s
 		}
 		DataInfo->setAttribute("DataLocation", settingsCvioCnfgData.DataLocation);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2058,12 +2060,7 @@ FileHandlerError EngineFileHandler::UpdateCalibData(Array <CalibrationData>* cal
 	{
 		mountDataPart(false);
 
-		std::ofstream infofile(calib_root_path / (CALIBRATION_OFFSET_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-		{
-			mountDataPart(true);
-			return FILE_ERROR;
-		}
+        const auto savePath=calib_root_path / (CALIBRATION_OFFSET_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("CalibOffset");
 		XmlElement* DataInfo = new XmlElement("offset");
@@ -2157,12 +2154,10 @@ FileHandlerError EngineFileHandler::UpdateCalibData(Array <CalibrationData>* cal
 		DataInfo->setAttribute("CV7CalibOffset9", calibData->getReference(7).calibOffset[8]);
 		DataInfo->setAttribute("CV7CalibOffset10", calibData->getReference(7).calibOffset[9]);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		infofile.close();
+		const bool written=writeXmlAtomic(savePath,DataXml);
 
 		mountDataPart(true);
-		return FILE_OK;
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2307,9 +2302,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsGeneralCnfgData(SettingsGenera
 {
 	if (exists(settings_path))
 	{
-		std::ofstream infofile(settings_path / (SETTINGCNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=settings_path / (SETTINGCNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("GeneralCnfg");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -2344,9 +2338,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsGeneralCnfgData(SettingsGenera
 		DataInfo->addChildElement(DataPreset);
 
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2422,9 +2415,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsSongCnfgData(SettingsSongCnfgD
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_SONG_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (SETTING_SONG_CNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("SongCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -2435,9 +2427,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsSongCnfgData(SettingsSongCnfgD
 		DataInfo->setAttribute("DataLocation", SettingsSongCnfgData.DataLocation);
 		DataInfo->setAttribute("SongInsertPosition", SettingsSongCnfgData.SongInsertPosition);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2498,9 +2489,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsSceneCnfgData(SettingsSceneCnf
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_SCENE_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (SETTING_SCENE_CNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("SceneCnfData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -2534,9 +2524,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsSceneCnfgData(SettingsSceneCnf
 			DataInfo->addChildElement(DataMidi);
 		}
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2615,9 +2604,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsTrackCnfgData(SettingsTrackCnf
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_TRACK_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (SETTING_TRACK_CNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("TrackCnfData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -2625,9 +2613,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsTrackCnfgData(SettingsTrackCnf
 		DataInfo->setAttribute("TrackAutoSaveParam", settingsTrackCnfgData.TrackAutoSaveParam);
 		DataInfo->setAttribute("DataLocation", settingsTrackCnfgData.DataLocation);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2724,11 +2711,9 @@ FileHandlerError EngineFileHandler::UpdateSettingsPatternCnfgData(SettingsPatter
 		else
 			filepath = { settings_path };
 
-		std::ofstream infofile(filepath / (SETTING_PATTERN_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
+        const auto savePath=filepath / (SETTING_PATTERN_CNFG_FILE_NAME + FILE_FORMAT);
 		XmlElement DataXml("PatternCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
-		if (!infofile)
-			return FILE_ERROR;
 
 		DataInfo->setAttribute("FILE_VERSION", FILE_VERSION);
 		DataInfo->setAttribute("PatternAutoSaveParam", settingsPatternCnfgData.PatternAutoSaveParam);
@@ -2737,11 +2722,9 @@ FileHandlerError EngineFileHandler::UpdateSettingsPatternCnfgData(SettingsPatter
 		DataInfo->setAttribute("patternDefaultNote", settingsPatternCnfgData.patternDefaultNote);
 		DataInfo->setAttribute("patternInsertPosition", settingsPatternCnfgData.patternInsertPosition);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		infofile.close();
+		const bool written=writeXmlAtomic(savePath,DataXml);
 
-		return FILE_OK;
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2804,9 +2787,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsRecordCnfgData(SettingsRecordC
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_RECORD_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (SETTING_RECORD_CNFG_FILE_NAME + FILE_FORMAT);
 		XmlElement DataXml("RecordCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
 		DataInfo->setAttribute("FILE_VERSION", FILE_VERSION);
@@ -2825,9 +2807,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsRecordCnfgData(SettingsRecordC
 		DataInfo->setAttribute("RecordPgmChangeEventParam", settingsRecordCnfgData.RecordPgmChangeEventParam);
 		DataInfo->setAttribute("DataLocation", settingsRecordCnfgData.DataLocation);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2892,9 +2873,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsBRayCnfgData(SettingsBRayCnfgD
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_BRAY_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (SETTING_BRAY_CNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("BRayCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -2904,9 +2884,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsBRayCnfgData(SettingsBRayCnfgD
 		DataInfo->setAttribute("DataLocation", settingsBRayCnfgData.DataLocation);
 		DataInfo->setAttribute("brayCcNum", settingsBRayCnfgData.brayCcNum);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -2963,9 +2942,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsRemoteControlCnfgData(Settings
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_REMOTE_SETTING_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (SETTING_REMOTE_SETTING_CNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("RemoteControlCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -2979,9 +2957,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsRemoteControlCnfgData(Settings
 		DataInfo->setAttribute("RemoteControlFontChange", settingsRemoteControlCnfgData.RemoteControlFontChange);
 		DataInfo->setAttribute("DataLocation", settingsRemoteControlCnfgData.DataLocation);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -3039,9 +3016,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsMidiMachineControlCnfgData(Set
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_MIDI_MACHINE_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (SETTING_MIDI_MACHINE_CNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("MidiMachineControlCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -3054,9 +3030,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsMidiMachineControlCnfgData(Set
 		DataInfo->setAttribute("mmcReceiveStatus", settingsMidiMachineControlCnfgData.mmcReceiveStatus);
 		DataInfo->setAttribute("mmcSendStatus", settingsMidiMachineControlCnfgData.mmcSendStatus);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -3114,10 +3089,7 @@ FileHandlerError EngineFileHandler::UpdateSettingsSculptModeCnfgData(SettingsScu
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_REMOTE_SETTING_SCLUPT_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-
-		if (!infofile)
-			return FILE_ERROR;
+		const auto savePath=filepath / (SETTING_REMOTE_SETTING_SCLUPT_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("SculptModeCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -3150,7 +3122,7 @@ FileHandlerError EngineFileHandler::UpdateSettingsSculptModeCnfgData(SettingsScu
 		DataInfo->setAttribute("sculptRandomAbsoluteNoteEnd", settingsSculptModeCnfgData.sculptRandomAbsoluteNoteEnd);
 		DataInfo->setAttribute("DataLocation", settingsSculptModeCnfgData.DataLocation);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
+		return writeXmlAtomic(savePath,DataXml) ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -3229,9 +3201,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsUdsCnfgData(SettingsUdsCnfgDat
 			filepath = { songs_path / SongName };
 		else
 			filepath = { settings_path };
-		std::ofstream infofile(filepath / (SETTING_UDS_SETTING_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-		if (!infofile)
-			return FILE_ERROR;
+
+        const auto savePath=filepath / (SETTING_UDS_SETTING_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("UdsCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -3251,9 +3222,8 @@ FileHandlerError EngineFileHandler::UpdateSettingsUdsCnfgData(SettingsUdsCnfgDat
 			DataInfo->addChildElement(DataUdsName);
 		}
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }
@@ -3324,10 +3294,7 @@ FileHandlerError EngineFileHandler::updateSettingsMidiClkCnfgData(SettingsMidiCl
 		else
 			filepath = { settings_path };
 
-		std::ofstream infofile(filepath / (SETTING_MIDI_CLK_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-
-		if (!infofile)
-			return FILE_ERROR;
+        const auto savePath=filepath / (SETTING_MIDI_CLK_CNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("MidiClkCnfgData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -3340,9 +3307,8 @@ FileHandlerError EngineFileHandler::updateSettingsMidiClkCnfgData(SettingsMidiCl
 		DataInfo->setAttribute("SyncTriggerForOut", settingsMidiClkCnfgData.SyncTriggerForOut);
 		DataInfo->setAttribute("DataLocation", settingsMidiClkCnfgData.DataLocation);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 
 	return FILE_EXISTS;
@@ -3408,10 +3374,7 @@ FileHandlerError EngineFileHandler::updateSettingsTransposeControlCnfgData(Trans
 		else
 			filepath = { settings_path };
 
-		std::ofstream infofile(filepath / (SETTING_MIDI_XPOSE_CNFG_FILE_NAME + FILE_FORMAT), std::ofstream::binary);
-
-		if (!infofile)
-			return FILE_ERROR;
+        const auto savePath=filepath / (SETTING_MIDI_XPOSE_CNFG_FILE_NAME + FILE_FORMAT);
 
 		XmlElement DataXml("TrackCnfData");
 		XmlElement* DataInfo = new XmlElement("settings");
@@ -3423,9 +3386,8 @@ FileHandlerError EngineFileHandler::updateSettingsTransposeControlCnfgData(Trans
 		DataInfo->setAttribute("transposeControlCenterPitch", data->transposeControlCenterPitch);
 		DataInfo->setAttribute("dataLocation", data->dataLocation);
 		DataXml.addChildElement(DataInfo);
-		infofile << DataXml.toString();
-		infofile.close();
-		return FILE_OK;
+		const bool written=writeXmlAtomic(savePath,DataXml);
+		return written ? FILE_OK : FILE_ERROR;
 	}
 	return FILE_EXISTS;
 }

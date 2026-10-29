@@ -379,7 +379,7 @@ namespace ui
 		else if (option == IgniteControlOptions::STOP)
 			sculptBtn.setEnabled(false);
 
-		_PUiVirtualEngine->SetCommand((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsPatternCnfg, (paramId_t)SettingsSculptModeCnfgParam::sculptButtonOnState, sculptBtn.isEnabled());
+		_PUiVirtualEngine->SetCommand((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSettingsSculptModeCnfg, (paramId_t)SettingsSculptModeCnfgParam::sculptButtonOnState, sculptBtn.isEnabled());
 
 		if (!sculptBtn.isEnabled())
 		{

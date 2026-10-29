@@ -36,6 +36,8 @@ extern IDevice* EngineInit(void);
 #include "DesktopServices.h"
 #include "DesktopFeatureTest.h"
 #include "DesktopLayoutTest.h"
+#include "DesktopCloseGuard.h"
+#include "DesktopCorrectnessTest.h"
 
 //==============================================================================
 #define SHOW_BOOT_IMAGE
@@ -142,6 +144,25 @@ public:
         }
 #endif
 		Logger::writeToLog("Engine ready: " + String(_PUiVirtualEngine && _PUiVirtualEngine->isIDeviceReady() ? "yes" : "no"));
+        auto* desktopEngine=static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+        {auto lock=desktopEngine->lockDesktopState();desktopEngine->desktopChanges.begin();}
+        closeGuard=std::make_unique<DesktopCloseGuard>(
+            [desktopEngine] {return desktopEngine->desktopHasUnsavedChanges();},
+            [desktopEngine] {return desktopEngine->SaveAllData();},
+            [this] {quit();},
+            [this](DesktopCloseGuard::Answer answer)
+            {
+                auto options=juce::MessageBoxOptions().withIconType(juce::MessageBoxIconType::QuestionIcon)
+                    .withTitle("Save changes before closing?")
+                    .withMessage("Your songs, patterns, instruments or settings have unsaved changes.")
+                    .withButton("Save").withButton("Discard").withButton("Cancel").withAssociatedComponent(mainWindow.get());
+                juce::AlertWindow::showAsync(options,std::move(answer));
+            },
+            [this]
+            {
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,"Could not save all changes",
+                    "Ignite is staying open. Check that the data folder is writable and has enough free space, then try saving again.");
+            });
 		if (commandLine.contains("--self-test"))
 			Timer::callAfterDelay(2500, [this] { runDesktopSelfTest(0); });
         if (commandLine.contains("--layout-test") || commandLine.contains("--layout-verify"))
@@ -172,6 +193,15 @@ public:
                 Timer::callAfterDelay(800,[this] {captureSettingsTabs(0);});
             });
         if (commandLine.contains("--desktop-settings")) Timer::callAfterDelay(1000,[this] {openDesktopSettings();});
+        if(commandLine.contains("--correctness-test") || commandLine.contains("--correctness-verify"))
+            Timer::callAfterDelay(2500,[this,commandLine]
+            {
+                auto& engine=*static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+                const bool verify=commandLine.contains("--correctness-verify");
+                int failures=verify?0:DesktopWorkflowTest::run(engine,false,true,false);
+                if(!failures) failures=DesktopCorrectnessTest::run(engine,*midiRouter,verify);
+                setApplicationReturnValue(failures?1:0);quit();
+            });
 		auto snapshotPath = SystemStats::getEnvironmentVariable("IGNITE_SNAPSHOT", "");
 		if (snapshotPath.isNotEmpty())
 			Timer::callAfterDelay(2000, [this, snapshotPath]
@@ -189,6 +219,7 @@ public:
 
 	void shutdown() override
 	{
+        closeGuard.reset();
         layoutTest.reset();
         if (desktopSettings) delete desktopSettings.getComponent();
         midiRouter.reset();
@@ -209,9 +240,17 @@ public:
 	//==============================================================================
 	void systemRequestedQuit() override
 	{
-		// This is called when the app is being asked to quit: you can ignore this
-		// request and let the app carry on running, or call quit() to allow the app to close.
-		quit();
+        auto* engine=static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+        if(engine)
+        {
+            auto lock=engine->lockDesktopState();
+            if(engine->songManager->activeSong && engine->songManager->getSystemState()!=SYSTEM_STATE::IDLE)
+            {
+                engine->songManager->stopRecord(); engine->songManager->stopSong();
+                engine->songManager->setSystemState(KEY_PRESSED::STOP_KEY);
+            }
+        }
+        if(closeGuard) closeGuard->request(); else quit();
 	}
 
 	void anotherInstanceStarted(const juce::String& commandLine) override
@@ -385,6 +424,7 @@ private:
     }
     std::unique_ptr<IgniteDesktop::MidiRouter> midiRouter;
     std::unique_ptr<DesktopLayoutTest> layoutTest;
+    std::unique_ptr<DesktopCloseGuard> closeGuard;
     juce::Component::SafePointer<juce::DialogWindow> desktopSettings;
 	std::unique_ptr<MainWindow> mainWindow;
 	std::unique_ptr<FileLogger> fileLogger;

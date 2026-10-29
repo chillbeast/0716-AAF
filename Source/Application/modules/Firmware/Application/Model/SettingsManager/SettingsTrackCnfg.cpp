@@ -149,9 +149,15 @@ void SettingsTrackCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param
 			doParamUndo ();
 			break;
 		case SettingsTrackCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsTrackCnfgParam::SettingsTrackCnfgSave:
 			SaveData();
 			break;
@@ -181,7 +187,16 @@ void SettingsTrackCnfg::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->UpdateSettingsTrackCnfgData(_SettingsTrackCnfgData, (_SettingsTrackCnfgData.DataLocation && engine.songManager->activeSong ? engine.songManager->activeSong->getName() : ""));
+	if(engine.fileHandler->UpdateSettingsTrackCnfgData(_SettingsTrackCnfgData, (_SettingsTrackCnfgData.DataLocation && engine.songManager->activeSong ? engine.songManager->activeSong->getName() : "")) != FILE_OK) return;
 	ClearUndoList();
 	isUndilistNeedUpdate = true;
+}
+// Explicit desktop save does not change the selected storage location.
+bool SettingsTrackCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateSettingsTrackCnfgData(_SettingsTrackCnfgData, (_SettingsTrackCnfgData.DataLocation && engine.songManager->activeSong ? engine.songManager->activeSong->getName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    return true;
 }

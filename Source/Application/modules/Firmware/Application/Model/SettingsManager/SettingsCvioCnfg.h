@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsCvioCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsCvioCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsCvioCnfg (const SettingsCvioCnfg&) = delete;
 		SettingsCvioCnfg& operator= (const SettingsCvioCnfg&) = delete;

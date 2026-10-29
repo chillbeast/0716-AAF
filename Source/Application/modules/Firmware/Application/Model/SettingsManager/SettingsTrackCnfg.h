@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsTrackCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsTrackCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsTrackCnfg (const SettingsTrackCnfg&) = delete;
 		SettingsTrackCnfg& operator= (const SettingsTrackCnfg&) = delete;

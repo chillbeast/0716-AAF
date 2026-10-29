@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsTransposeControlCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsTransposeControlCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsTransposeControlCnfg (const SettingsTransposeControlCnfg&) = delete;
 		SettingsTransposeControlCnfg& operator= (const SettingsTransposeControlCnfg&) = delete;

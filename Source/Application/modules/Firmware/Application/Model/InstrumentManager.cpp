@@ -576,14 +576,16 @@ void InstrumentManager::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	if (engine.fileHandler->saveInstrument(currentInstrumentName, getInstrumentData(currentInstrumentName)) == FILE_OK)
+	if (SaveInstrument(currentInstrumentName))
         ClearUndoList();
 
 }
-void InstrumentManager::SaveInstrument (std::string name)
+bool InstrumentManager::SaveInstrument(std::string name)
 {
-	if (!name.empty ())
-		engine.fileHandler->saveInstrument (name, getInstrumentData (name));
+    if(name.empty() || engine.fileHandler->saveInstrument(name,getInstrumentData(name))!=FILE_OK) return false;
+    engine.desktopSaved("instrument:"+name);
+    if(name==currentInstrumentName) {SetDefaultUndoListData();ClearUndoList();}
+    return true;
 }
 
 Instrument* InstrumentManager::getInstrument (std::string InstrumentName)

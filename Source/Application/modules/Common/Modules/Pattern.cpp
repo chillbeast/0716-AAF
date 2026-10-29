@@ -2,6 +2,7 @@
 #include <list>
 #include <string>
 #include <memory>
+#include <vector>
 #include "Common/Modules/Bar.h"
 #include "Common/Modules/Step.h"
 #include "Firmware/Application/Model/ModelParams.h"
@@ -622,62 +623,60 @@ std::list<StepData> Pattern::CopyClientStepDataToStepData (std::list<ClientPatte
 	returnStepDataList = clientPatternStepData;
 	return returnStepDataList;
 }
-bool Pattern::InsertStep (uint16_t BarId, uint8_t StepCount, uint8_t InsertAt, std::list<ClientPatternStepData> ToStepDataList)
+bool Pattern::InsertStep(uint16_t barId,uint8_t requestedCount,uint8_t insertAt,std::list<ClientPatternStepData> payload)
 {
-	std::list<StepData>  CopystepDataList;
-	std::list<StepData> ReturnStepDataList;
-	uint16_t barIdToAdd = BarId;
-
-	uint8_t stepCount = (StepCount ? StepCount : _NumOfStepsPerBar);
-	uint8_t insertAt = (InsertAt ? InsertAt : 1);
-
-	if (!ToStepDataList.empty ())
-		CopystepDataList = CopyClientStepDataToStepData (ToStepDataList);
-	else
-		CopystepDataList = CreateEmptyStepdata (stepCount, insertAt);
-
-	auto barIt = _patternData->barList.find (barIdToAdd);
-
-	if (barIt != _patternData->barList.end())
-	{
-		ReturnStepDataList = AddUpdateBarSteps (barIt->second, insertAt, CopystepDataList);
-
-		if (!ReturnStepDataList.empty ())//excess steps to be moved to next Bar
-		{
-			auto barItNext = _patternData->barList.find (barIdToAdd + 1);
-			uint8_t size = _NumOfStepsPerBar;
-			if (ReturnStepDataList.size () > _NumOfStepsPerBar)
-			{
-				size = (uint8_t)ReturnStepDataList.size (); // Create for requested size or Max Bar size
-			}
-			if (barItNext == _patternData->barList.end ())
-			{
-				//update data and create new Bar
-				CopystepDataList = CreateEmptyStepdata (size, 0);
-				auto stepListIt = CopystepDataList.begin ();
-				for (auto stepIt = ReturnStepDataList.begin (); stepIt != ReturnStepDataList.end (); stepIt)
-				{
-					*stepListIt = *stepIt;  // Copy available old data
-					stepListIt->nodeList = stepIt->nodeList;
-					stepListIt++;
-				}
-				++(_patternData->numBars);
-				_patternData->barList.emplace (_patternData->numBars, Bar (this, _patternData->numBars, barIt->second._BarData->barTransposeDefeat, barIt->second._BarData->barRepeatCount, barIt->second._BarData->gBarSyncOn, barIt->second._BarData->direction, CopystepDataList));
-			}
-			else
-			{
-				// add remain in next bar
-				insertAt = 1;
-				barIdToAdd = barItNext->second._BarData->BarId;
-				CopystepDataList = ReturnStepDataList;
-			}
-		}
-	}
-	else
-	{
-		DBG (String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "ERR : Cannot locate bar");
-	}
-	return true;
+    const size_t width=_NumOfStepsPerBar;
+    const auto selected=_patternData->barList.find(barId);
+    if(!width || selected==_patternData->barList.end() || insertAt>width) return false;
+    const size_t count=payload.empty() ? (requestedCount?requestedCount:width) : payload.size();
+    if(!count || (requestedCount && !payload.empty() && requestedCount!=count)) return false;
+    const size_t position=size_t(barId)*width+insertAt;
+    const auto empty=CreateEmptyStepdata(1,0).front();
+    std::vector<StepData> steps;
+    for(const auto& bar:_patternData->barList)
+    {
+        if(bar.second._BarData->stepList.size()!=width) return false;
+        for(const auto& step:bar.second._BarData->stepList) steps.push_back(*step.second._stepData);
+    }
+    size_t extent=size_t(_patternData->patternLastStepId);
+    if(extent>steps.size()) return false;
+    for(size_t i=extent;i<steps.size();++i)
+    {
+        const auto& step=steps[i];
+        if(!step.nodeList.empty() || !step.auxList.empty() || step.nodeCount || step.enable!=empty.enable ||
+           step.skipStatus!=empty.skipStatus || step.tieStatus!=empty.tieStatus || step.transposeDefeatStatus!=empty.transposeDefeatStatus) extent=i+1;
+    }
+    extent=std::max(extent,position);
+    if(extent+count>size_t(MAX_NUM_OF_BARS_IN_PATTERN)*width) return false;
+    steps.resize(extent);
+    auto inserted=payload.empty()?CreateEmptyStepdata(uint8_t(count),uint16_t(position)):std::move(payload);
+    steps.insert(steps.begin()+position,inserted.begin(),inserted.end());
+    const auto bars=std::max(size_t(_patternData->numBars),(steps.size()+width-1)/width);
+    while(steps.size()<bars*width) steps.push_back(empty);
+    std::multimap<uint16_t,Bar> replacement;
+    for(size_t bar=0;bar<bars;++bar)
+    {
+        std::list<StepData> data;
+        for(size_t offset=0;offset<width;++offset)
+        {
+            const auto index=bar*width+offset;
+            auto step=std::move(steps[index]); step.BarId=uint16_t(bar);step.stepId=uint16_t(index);
+            for(auto& pitch:step.nodeList) for(auto& node:pitch.second) node.second.step_id=uint16_t(index);
+            data.push_back(std::move(step));
+        }
+        const auto source=_patternData->barList.find(uint16_t(bar));
+        const auto* config=source==_patternData->barList.end()?_patternData->barList.rbegin()->second._BarData:source->second._BarData;
+        replacement.emplace(uint16_t(bar),Bar(this,uint16_t(bar),config->barTransposeDefeat,config->barRepeatCount,config->gBarSyncOn,config->direction,std::move(data)));
+    }
+    if(position<=size_t(_patternData->patternLastStepId)) _patternData->patternLastStepId+=int16_t(count);
+    _patternData->barList.swap(replacement);_patternData->numBars=uint8_t(bars);
+    editStep=playStep=nullptr;
+    for(auto& bar:_patternData->barList) for(auto& step:bar.second._BarData->stepList)
+    {
+        if(step.first==editStepId) editStep=&step.second;
+        if(step.first==playStepId) playStep=&step.second;
+    }
+    return true;
 }
 
 std::list<StepData> Pattern::AddUpdateBarSteps (Bar Bar, uint8_t InsertAt, std::list<StepData>  stepDataList)

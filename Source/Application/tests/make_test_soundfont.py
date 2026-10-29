@@ -13,23 +13,27 @@ def name(text):
     return text.encode('ascii').ljust(20, b'\0')
 
 
-def make_font(bank=0, program=0):
+def make_font(bank=0, program=0, presets=None):
     rate = 22050
     count = rate
     pcm = [int(16000 * math.sin(2 * math.pi * 220 * i / rate)) for i in range(count)] + [0] * 46
     info = chunk(b'LIST', b'INFO' + chunk(b'ifil', struct.pack('<HH', 2, 1))
                  + chunk(b'INAM', b'Ignite test tone\0') + chunk(b'ISFT', b'Ignite desktop tests\0'))
     sdta = chunk(b'LIST', b'sdta' + chunk(b'smpl', struct.pack(f'<{len(pcm)}h', *pcm)))
-    phdr = struct.pack('<20sHHHIII', name('Test sine'), program, bank, 0, 0, 0, 0)
-    phdr += struct.pack('<20sHHHIII', name('EOP'), 0, 0, 1, 0, 0, 0)
+    specs = presets if presets is not None else [(bank, program, 0)]
+    phdr = b''.join(struct.pack('<20sHHHIII', name('Test sine' if len(specs) == 1 else f'Tone {b}:{p}'), p, b, i, 0, 0, 0)
+                    for i, (b, p, shift) in enumerate(specs))
+    phdr += struct.pack('<20sHHHIII', name('EOP'), 0, 0, len(specs), 0, 0, 0)
+    pbag = b''.join(struct.pack('<HH', i * 2, 0) for i in range(len(specs) + 1))
+    pgen = b''.join(struct.pack('<HHHH', 51, shift & 0xffff, 41, 0) for b, p, shift in specs) + bytes(4)
     inst = struct.pack('<20sH', name('Test sine'), 0) + struct.pack('<20sH', name('EOI'), 1)
     shdr = struct.pack('<20sIIIIIBbHH', name('Sine A3'), 0, count, 0, count, rate, 57, 0, 0, 1)
     shdr += struct.pack('<20sIIIIIBbHH', name('EOS'), count, count, count, count, rate, 0, 0, 0, 1)
     pdta = chunk(b'LIST', b'pdta'
                  + chunk(b'phdr', phdr)
-                 + chunk(b'pbag', struct.pack('<HHHH', 0, 0, 1, 0))
+                 + chunk(b'pbag', pbag)
                  + chunk(b'pmod', bytes(10))
-                 + chunk(b'pgen', struct.pack('<HHHH', 41, 0, 0, 0))
+                 + chunk(b'pgen', pgen)
                  + chunk(b'inst', inst)
                  + chunk(b'ibag', struct.pack('<HHHH', 0, 0, 3, 0))
                  + chunk(b'imod', bytes(10))
@@ -41,4 +45,7 @@ def make_font(bank=0, program=0):
 if __name__ == '__main__':
     target = Path(sys.argv[1])
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(make_font(int(sys.argv[2]) if len(sys.argv) > 2 else 0, int(sys.argv[3]) if len(sys.argv) > 3 else 0))
+    if len(sys.argv) > 2 and sys.argv[2] == '--midi':
+        target.write_bytes(make_font(presets=[(0, 0, 0), (0, 1, 12), (42, 7, -12), (129, 5, 7)]))
+    else:
+        target.write_bytes(make_font(int(sys.argv[2]) if len(sys.argv) > 2 else 0, int(sys.argv[3]) if len(sys.argv) > 3 else 0))

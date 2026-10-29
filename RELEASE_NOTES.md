@@ -1,3 +1,17 @@
+# IGNITE Desktop v0.3.3-desktop.3
+
+MIDI controller handling, protection for unsaved changes and editor/performance corrections.
+
+- Internal synth: sustain, pitch bend and RPN bend range, volume/expression, bank/program changes, basic modulation/pressure vibrato, controller reset and all-notes/all-sound-off handling. Panic leaves the synth ready for new notes.
+- Close with pending edits: Save / Discard / Cancel. Failed saves stay open for retry. Save All includes every loaded pattern/instrument and preserves global versus song-scoped settings. Checked atomic settings writes; backup export stops on save failure.
+- Ctrl+Insert in Pattern view inserts a blank step, shifts later notes across bars and supports undo, within the 256-step limit.
+- Corrected MIDI/Sculpt undo, signed and random-relative Sculpt arithmetic, pitch-map iteration, scale snapping at octave boundaries and scene-length fill release.
+- Updated manual and reproducible correctness tests with synthetic multi-preset audio, locked-file failure/retry and fresh-process persistence checks.
+
+Release and Debug builds succeed. Verification: **82 native Release/ASan checks; 83 Debug; 107 MIDI/save/editor; 75 desktop feature; 61 layout; 107 workflow/audio/recovery; 14 font/no-font smoke; 5 packet-protocol checks**. Correctness, features, layout and workflow also pass under AddressSanitizer. Counts include repeated setup. No address-error report was generated.
+
+Download **Ignite-Desktop-v0.3.3-desktop.3-windows-x64.zip**, extract it and run **Ignite.exe**. Both Compact and Hardware layouts are included, with corresponding source and the illustrated manual. Supply your own SF2. This remains a community preview; physical MIDI/CV/clock behavior is unverified. The synth still uses one shared mono SF2, eight voices per track and basic modulation mappings. MIDI file interchange, song WAV bounce and an Ignite VST are not provided.
+
 # IGNITE Desktop v0.3.3-desktop.2
 
 Compact layout gives the firmware touchscreen most of the window, with the original buttons, knobs and pads arranged closely along the right and bottom. Use the **Compact / Hardware** toolbar to switch without restarting or changing the selected song. Compact is the default and the choice is remembered.

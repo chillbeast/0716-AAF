@@ -265,17 +265,20 @@ void PatternManager::clearAllPattern ()
 	engine.fileHandler->DeleteAllPattern ();
 }
 
-void PatternManager::SavePattern(Pattern* pattern, bool isCreate)
+bool PatternManager::SavePattern(Pattern* pattern, bool isCreate)
 {
-    if (pattern == nullptr) return;
+    if (pattern == nullptr) return false;
     const auto patternName = pattern->getName();
-    if (engine.fileHandler->Createpattern(patternName, *pattern->_patternData) != FILE_OK) return;
+    if (engine.fileHandler->Createpattern(patternName, *pattern->_patternData) != FILE_OK) return false;
     if (!isCreate && !UndoDataList.empty())
     {
         const auto oldName = UndoDataList.back()._clientPatternData.patternName;
         if (oldName != patternName) engine.fileHandler->DeletePattern(oldName);
     }
-    UpdateUndoList(patternName, PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT);
+    if(UndoDataList.empty() || UndoDataList.front()._clientPatternData.patternName==patternName)
+        UpdateUndoList(patternName, PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT);
+    engine.desktopSaved("pattern:"+patternName);
+    return true;
 }
 
 std::string PatternManager::addPattern(void)
@@ -745,8 +748,8 @@ bool PatternManager::PatternMngrSetStepData(moduleId_t moduleSrc, std::string pa
 
 			if (!isPlayMode)
 				UpdateUndoList(patternName, PatternDataUpdateReasonType::PatternDataUpdateReason_StepData);
+			break;
 		}
-		break;
 	}
 	if (updated && !isPlayMode)
 		paramlistener->onParameterChanged(moduleSrc, FindParameter((paramId_t)PatternParam::paramPatternUpdateNotif));
@@ -910,19 +913,21 @@ bool PatternManager::PatternRemoveBar(std::string patternName, uint16_t BarId, u
 	return status;
 }
 
-bool PatternManager::PatternInsertStep(std::string patternName, uint16_t BarId, uint8_t stepCount, uint8_t InsertAt, std::list<ClientPatternStepData> ToStepDataList)
+bool PatternManager::PatternInsertStep(std::string name,uint16_t bar,uint8_t count,uint8_t position,std::list<ClientPatternStepData> data)
 {
-	bool status = false;
-	for (auto it = patternList.begin(); it != patternList.end(); ++it)
-	{
-		if (it->_patternData->patternName == patternName)
-		{
-			status = (it->InsertStep (BarId, stepCount, InsertAt, ToStepDataList));
-			UpdateUndoList(patternName, PatternDataUpdateReasonType::PatternDataUpdateReason_InsertStep);
-			break;
-		}
-	}
-	return status;
+    auto* pattern=GetPattern(name);
+    if(!pattern) return false;
+    auto before=PatternMngrGetPatternData(name);
+    if(!pattern->InsertStep(bar,count,position,std::move(data))) return false;
+    if(UndoDataList.empty() || UndoDataList.front()._clientPatternData.patternName!=name)
+        UpdateUndoList(name,PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT,&before);
+    for(auto* listener:_patternListeners)
+    {
+        listener->handleBarCountChange(pattern->_patternData->numBars,name);
+        listener->handleLastStepChange(uint16_t(pattern->_patternData->patternLastStepId),name);
+    }
+    UpdateUndoList(name,PatternDataUpdateReasonType::PatternDataUpdateReason_InsertStep);
+    return true;
 }
 
 std::list<PatternDataUpdateReasonType> PatternManager::PatternGetUndoList(void)
@@ -941,6 +946,7 @@ std::list<PatternDataUpdateReasonType> PatternManager::PatternGetUndoList(void)
 
 void PatternManager::UpdateUndoList(std::string patternName, PatternDataUpdateReasonType _dataUpdateReasonType, ClientPatternData* clientPatternData)
 {
+    if(_dataUpdateReasonType!=PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT) engine.desktopEdited("pattern:"+patternName);
 	PatternUndoData patternUndoData;
 	if (clientPatternData != nullptr)
 	{
@@ -966,8 +972,16 @@ void PatternManager::UpdateUndoList(std::string patternName, PatternDataUpdateRe
 	UndoDataList.emplace_front(std::move(patternUndoData));
 }
 
+void PatternManager::desktopMarkSaved()
+{
+    const auto current=!editPatternName.empty()?editPatternName:UndoDataList.empty()?std::string{}:UndoDataList.front()._clientPatternData.patternName;
+    if(GetPattern(current)) UpdateUndoList(current,PatternDataUpdateReasonType::PatternDataUpdateReason_DEFAULT);
+    else UndoDataList.clear();
+}
+
 PatternDataUpdateReasonType PatternManager::PatternUndo(bool resetToDefault)
 {
+	if(UndoDataList.empty()) return PatternDataUpdateReasonType::PatternDataUpdateReason_UNKNOWN;
 	ClientPatternData _clientPatternData;
 	PatternDataUpdateReasonType UpdateReasonType = PatternDataUpdateReasonType::PatternDataUpdateReason_UNKNOWN;
 	bool patternRegenerate = false;

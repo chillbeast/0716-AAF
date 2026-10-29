@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsRecordCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsRecordCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsRecordCnfg (const SettingsRecordCnfg&) = delete;
 		SettingsRecordCnfg& operator= (const SettingsRecordCnfg&) = delete;

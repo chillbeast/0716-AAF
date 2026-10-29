@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsBRayCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsBRayCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsBRayCnfg (const SettingsBRayCnfg&) = delete;
 		SettingsBRayCnfg& operator= (const SettingsBRayCnfg&) = delete;

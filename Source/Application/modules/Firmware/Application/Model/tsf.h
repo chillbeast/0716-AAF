@@ -217,6 +217,8 @@ TSFDEF int tsf_channel_set_bank_preset(tsf* f, int channel, int bank, int preset
 TSFDEF int tsf_channel_set_pan(tsf* f, int channel, float pan);
 TSFDEF int tsf_channel_set_volume(tsf* f, int channel, float volume);
 TSFDEF int tsf_channel_set_pitchwheel(tsf* f, int channel, int pitch_wheel);
+TSFDEF int tsf_channel_set_pressure(tsf* f, int channel, int pressure);
+TSFDEF int tsf_channel_set_key_pressure(tsf* f, int channel, int key, int pressure);
 TSFDEF int tsf_channel_set_pitchrange(tsf* f, int channel, float pitch_range);
 TSFDEF int tsf_channel_set_tuning(tsf* f, int channel, float tuning);
 
@@ -454,6 +456,8 @@ extern "C" {
 	struct tsf_voice
 	{
 		int playingPreset, playingKey, playingChannel;
+		int heldSustain;
+		float midiVibrato, keyPressure;
 		struct tsf_region* region;
 		double pitchInputTimecents, pitchOutputFactor;
 		double sourceSamplePosition;
@@ -468,6 +472,8 @@ extern "C" {
 	{
 		unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData;
 		float panOffset, gainDB, pitchRange, tuning;
+		unsigned short midiModulation;
+		unsigned char sustain, pressure;
 	};
 
 	struct tsf_channels
@@ -1250,7 +1256,8 @@ extern "C" {
 		// Cache some values, to give them at least some chance of ending up in registers.
 		TSF_BOOL updateModEnv = (region->modEnvToPitch || region->modEnvToFilterFc);
 		TSF_BOOL updateModLFO = (v->modlfo.delta && (region->modLfoToPitch || region->modLfoToFilterFc || region->modLfoToVolume));
-		TSF_BOOL updateVibLFO = (v->viblfo.delta && (region->vibLfoToPitch));
+		const float vibratoPitch = (float)region->vibLfoToPitch + v->midiVibrato + v->keyPressure;
+		TSF_BOOL updateVibLFO = (v->viblfo.delta && vibratoPitch != 0);
 		TSF_BOOL isLooping = (v->loopStart < v->loopEnd);
 		unsigned int tmpLoopStart = v->loopStart, tmpLoopEnd = v->loopEnd;
 		double tmpSampleEndDbl = (double)region->end, tmpLoopEndDbl = (double)tmpLoopEnd + 1.0;
@@ -1260,7 +1267,7 @@ extern "C" {
 		TSF_BOOL dynamicLowpass = (region->modLfoToFilterFc || region->modEnvToFilterFc);
 		float tmpSampleRate = f->outSampleRate, tmpInitialFilterFc, tmpModLfoToFilterFc, tmpModEnvToFilterFc;
 
-		TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || region->vibLfoToPitch);
+		TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || vibratoPitch != 0);
 		double pitchRatio;
 		float tmpModLfoToPitch, tmpVibLfoToPitch, tmpModEnvToPitch;
 
@@ -1270,7 +1277,7 @@ extern "C" {
 		if (dynamicLowpass) tmpInitialFilterFc = (float)region->initialFilterFc, tmpModLfoToFilterFc = (float)region->modLfoToFilterFc, tmpModEnvToFilterFc = (float)region->modEnvToFilterFc;
 		else tmpInitialFilterFc = 0, tmpModLfoToFilterFc = 0, tmpModEnvToFilterFc = 0;
 
-		if (dynamicPitchRatio) pitchRatio = 0, tmpModLfoToPitch = (float)region->modLfoToPitch, tmpVibLfoToPitch = (float)region->vibLfoToPitch, tmpModEnvToPitch = (float)region->modEnvToPitch;
+		if (dynamicPitchRatio) pitchRatio = 0, tmpModLfoToPitch = (float)region->modLfoToPitch, tmpVibLfoToPitch = vibratoPitch, tmpModEnvToPitch = (float)region->modEnvToPitch;
 		else pitchRatio = tsf_timecents2Secsd(v->pitchInputTimecents) * v->pitchOutputFactor, tmpModLfoToPitch = 0, tmpVibLfoToPitch = 0, tmpModEnvToPitch = 0;
 
 		if (dynamicGain) tmpModLfoToVolume = (float)region->modLfoToVolume * 0.1f;
@@ -1640,6 +1647,9 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 			voice->region = region;
 			voice->playingPreset = preset_index;
 			voice->playingKey = key;
+			voice->playingChannel = -1;
+			voice->heldSustain = 0;
+			voice->midiVibrato = voice->keyPressure = 0;
 			voice->playIndex = voicePlayIndex;
 			voice->noteGainDB = f->globalGainDB - region->attenuation - tsf_gainToDecibels(1.0f / vel);
 
@@ -1793,6 +1803,7 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 		struct tsf_channel* c = &f->channels->channels[f->channels->activeChannel];
 		float newpan = v->region->pan + c->panOffset;
 		v->playingChannel = f->channels->activeChannel;
+		v->midiVibrato = 50.0f * (c->midiModulation / 16383.0f + c->pressure / 127.0f);
 		v->noteGainDB += c->gainDB;
 		tsf_voice_calcpitchratio(v, (c->pitchWheel == 8192 ? c->tuning : ((c->pitchWheel / 16383.0f * c->pitchRange * 2.0f) - c->pitchRange + c->tuning)), f->outSampleRate);
 		if (newpan <= -0.5f) { v->panFactorLeft = 1.0f; v->panFactorRight = 0.0f; }
@@ -1803,6 +1814,7 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 	static struct tsf_channel* tsf_channel_init(tsf* f, int channel)
 	{
 		int i;
+		if (!f || channel < 0 || channel > 15) return TSF_NULL;
 		if (f->channels && channel < f->channels->channelNum) return &f->channels->channels[channel];
 		if (!f->channels)
 		{
@@ -1832,6 +1844,8 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 			c->gainDB = 0.0f;
 			c->pitchRange = 2.0f;
 			c->tuning = 0.0f;
+			c->midiModulation = 0;
+			c->sustain = c->pressure = 0;
 		}
 		return &f->channels->channels[channel];
 	}
@@ -1931,11 +1945,43 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 		struct tsf_channel* c = tsf_channel_init(f, channel);
 		if (!c) return 0;
 		if (c->pitchWheel == pitch_wheel) return 1;
-		c->pitchWheel = (unsigned short)pitch_wheel;
+		c->pitchWheel = (unsigned short)(pitch_wheel < 0 ? 0 : pitch_wheel > 16383 ? 16383 : pitch_wheel);
 		tsf_channel_applypitch(f, channel, c);
 		return 1;
 	}
 
+	static void tsf_channel_apply_vibrato(tsf* f, int channel, struct tsf_channel* c)
+	{
+		struct tsf_voice *v, *end;
+		for (v=f->voices,end=v+f->voiceNum;v!=end;++v)
+			if (v->playingPreset!=-1 && v->playingChannel==channel)
+				v->midiVibrato=50.0f*(c->midiModulation/16383.0f+c->pressure/127.0f);
+	}
+	TSFDEF int tsf_channel_set_pressure(tsf* f, int channel, int pressure)
+	{
+		struct tsf_channel* c=tsf_channel_init(f,channel);
+		if (!c) return 0;
+		c->pressure=(unsigned char)(pressure<0?0:pressure>127?127:pressure);
+		tsf_channel_apply_vibrato(f,channel,c); return 1;
+	}
+	TSFDEF int tsf_channel_set_key_pressure(tsf* f, int channel, int key, int pressure)
+	{
+		struct tsf_voice *v,*end;
+		if (!tsf_channel_init(f,channel) || key<0 || key>127) return 0;
+		for (v=f->voices,end=v+f->voiceNum;v!=end;++v)
+			if (v->playingPreset!=-1 && v->playingChannel==channel && v->playingKey==key)
+				v->keyPressure=50.0f*(pressure<0?0:pressure>127?127:pressure)/127.0f;
+		return 1;
+	}
+	static void tsf_channel_set_sustain(tsf* f, int channel, struct tsf_channel* c, int enabled)
+	{
+		struct tsf_voice *v,*end;
+		c->sustain=(unsigned char)(enabled!=0);
+		if (!enabled)
+			for (v=f->voices,end=v+f->voiceNum;v!=end;++v)
+				if (v->playingPreset!=-1 && v->playingChannel==channel && v->heldSustain)
+				{ v->heldSustain=0; tsf_voice_end(f,v); }
+	}
 	TSFDEF int tsf_channel_set_pitchrange(tsf* f, int channel, float pitch_range)
 	{
 		struct tsf_channel* c = tsf_channel_init(f, channel);
@@ -1958,7 +2004,7 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 
 	TSFDEF int tsf_channel_note_on(tsf* f, int channel, int key, float vel)
 	{
-		if (!f->channels || channel >= f->channels->channelNum) return 1;
+		if (!f->channels || channel < 0 || channel >= f->channels->channelNum || key < 0 || key > 127) return 0;
 		f->channels->activeChannel = channel;
 		return tsf_note_on(f, f->channels->channels[channel].presetIndex, key, vel);
 	}
@@ -1969,7 +2015,7 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 		for (; v != vEnd; v++)
 		{
 			//Find the first and last entry in the voices list with matching channel, key and look up the smallest play index
-			if (v->playingPreset == -1 || v->playingChannel != channel || v->playingKey != key || v->ampenv.segment >= TSF_SEGMENT_RELEASE) continue;
+			if (v->playingPreset == -1 || v->playingChannel != channel || v->playingKey != key || v->heldSustain || v->ampenv.segment >= TSF_SEGMENT_RELEASE) continue;
 			else if (!vMatchFirst || v->playIndex < vMatchFirst->playIndex) vMatchFirst = vMatchLast = v;
 			else if (v->playIndex == vMatchFirst->playIndex) vMatchLast = v;
 		}
@@ -1979,7 +2025,8 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 			//Stop all voices with matching channel, key and the smallest play index which was enumerated above
 			if (v != vMatchFirst && v != vMatchLast &&
 				(v->playIndex != vMatchFirst->playIndex || v->playingPreset == -1 || v->playingChannel != channel || v->playingKey != key || v->ampenv.segment >= TSF_SEGMENT_RELEASE)) continue;
-			tsf_voice_end(f, v);
+			if (f->channels && channel>=0 && channel<f->channels->channelNum && f->channels->channels[channel].sustain) v->heldSustain=1;
+			else tsf_voice_end(f, v);
 		}
 	}
 
@@ -1988,23 +2035,28 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 		struct tsf_voice* v = f->voices, * vEnd = v + f->voiceNum;
 		for (; v != vEnd; v++)
 			if (v->playingPreset != -1 && v->playingChannel == channel && v->ampenv.segment < TSF_SEGMENT_RELEASE)
-				tsf_voice_end(f, v);
+				if (f->channels && channel>=0 && channel<f->channels->channelNum && f->channels->channels[channel].sustain) v->heldSustain=1;
+				else tsf_voice_end(f, v);
 	}
 
 	TSFDEF void tsf_channel_sounds_off_all(tsf* f, int channel)
 	{
 		struct tsf_voice* v = f->voices, * vEnd = v + f->voiceNum;
 		for (; v != vEnd; v++)
-			if (v->playingPreset != -1 && v->playingChannel == channel && (v->ampenv.segment < TSF_SEGMENT_RELEASE || v->ampenv.parameters.release))
-				tsf_voice_endquick(f, v);
+			if (v->playingPreset != -1 && v->playingChannel == channel)
+			{ v->heldSustain=0; v->playingPreset=-1; }
 	}
 
 	TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int control_value)
 	{
 		struct tsf_channel* c = tsf_channel_init(f, channel);
 		if (!c) return 0;
+		if (control_value<0 || control_value>127 || controller<0 || controller>127) return 0;
 		switch (controller)
 		{
+		case   1: c->midiModulation=(unsigned short)((c->midiModulation&127)|(control_value<<7)); tsf_channel_apply_vibrato(f,channel,c); return 1;
+		case  33: c->midiModulation=(unsigned short)((c->midiModulation&0x3f80)|control_value); tsf_channel_apply_vibrato(f,channel,c); return 1;
+		case  64: tsf_channel_set_sustain(f,channel,c,control_value>=64); return 1;
 		case   7 /*VOLUME_MSB*/: c->midiVolume = (unsigned short)((c->midiVolume & 0x7F) | (control_value << 7)); goto TCMC_SET_VOLUME;
 		case  39 /*VOLUME_LSB*/: c->midiVolume = (unsigned short)((c->midiVolume & 0x3F80) | control_value);       goto TCMC_SET_VOLUME;
 		case  11 /*EXPRESSION_MSB*/: c->midiExpression = (unsigned short)((c->midiExpression & 0x7F) | (control_value << 7)); goto TCMC_SET_VOLUME;
@@ -2013,24 +2065,25 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 		case  42 /*PAN_LSB*/: c->midiPan = (unsigned short)((c->midiPan & 0x3F80) | control_value);       goto TCMC_SET_PAN;
 		case   6 /*DATA_ENTRY_MSB*/: c->midiData = (unsigned short)((c->midiData & 0x7F) | (control_value << 7)); goto TCMC_SET_DATA;
 		case  38 /*DATA_ENTRY_LSB*/: c->midiData = (unsigned short)((c->midiData & 0x3F80) | control_value);       goto TCMC_SET_DATA;
-		case   0 /*BANK_SELECT_MSB*/: c->bank = (unsigned short)(0x8000 | control_value); return 1; //bank select MSB alone acts like LSB
-		case  32 /*BANK_SELECT_LSB*/: c->bank = (unsigned short)((c->bank & 0x8000 ? ((c->bank & 0x7F) << 7) : 0) | control_value); return 1;
+		case   0 /*BANK_SELECT_MSB*/: c->bank = (unsigned short)((c->bank&127)|(control_value<<7)); return 1;
+		case  32 /*BANK_SELECT_LSB*/: c->bank = (unsigned short)((c->bank&0x3f80)|control_value); return 1;
 		case 101 /*RPN_MSB*/: c->midiRPN = (unsigned short)(((c->midiRPN == 0xFFFF ? 0 : c->midiRPN) & 0x7F) | (control_value << 7)); return 1;
 		case 100 /*RPN_LSB*/: c->midiRPN = (unsigned short)(((c->midiRPN == 0xFFFF ? 0 : c->midiRPN) & 0x3F80) | control_value); return 1;
 		case  98 /*NRPN_LSB*/: c->midiRPN = 0xFFFF; return 1;
 		case  99 /*NRPN_MSB*/: c->midiRPN = 0xFFFF; return 1;
 		case 120 /*ALL_SOUND_OFF*/: tsf_channel_sounds_off_all(f, channel); return 1;
 		case 123 /*ALL_NOTES_OFF*/: tsf_channel_note_off_all(f, channel);   return 1;
+		case 124: case 125: case 126: case 127: tsf_channel_note_off_all(f,channel); return 1;
 		case 121 /*ALL_CTRL_OFF*/:
-			c->midiVolume = c->midiExpression = 16383;
-			c->midiPan = 8192;
-			c->bank = 0;
+			c->midiExpression = 16383;
 			c->midiRPN = 0xFFFF;
 			c->midiData = 0;
-			tsf_channel_set_volume(f, channel, 1.0f);
-			tsf_channel_set_pan(f, channel, 0.5f);
-			tsf_channel_set_pitchrange(f, channel, 2.0f);
-			tsf_channel_set_tuning(f, channel, 0);
+			c->midiModulation=c->pressure=0;
+			tsf_channel_set_sustain(f,channel,c,0);
+			tsf_channel_apply_vibrato(f,channel,c);
+			{ struct tsf_voice *v,*end; for(v=f->voices,end=v+f->voiceNum;v!=end;++v) if(v->playingPreset!=-1 && v->playingChannel==channel) v->keyPressure=0; }
+			tsf_channel_set_volume(f, channel, TSF_POWF(c->midiVolume / 16383.0f,3.0f));
+			tsf_channel_set_pitchwheel(f,channel,8192);
 			return 1;
 		}
 		return 1;
@@ -2055,7 +2108,7 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 
 	TSFDEF int tsf_channel_get_preset_bank(tsf* f, int channel)
 	{
-		return (f->channels && channel < f->channels->channelNum ? (f->channels->channels[channel].bank & 0x7FFF) : 0);
+		return (f->channels && channel >=0 && channel < f->channels->channelNum ? f->channels->channels[channel].bank : 0);
 	}
 
 	TSFDEF int tsf_channel_get_preset_number(tsf* f, int channel)
@@ -2065,7 +2118,7 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 
 	TSFDEF float tsf_channel_get_pan(tsf* f, int channel)
 	{
-		return (f->channels && channel < f->channels->channelNum ? f->channels->channels[channel].panOffset - 0.5f : 0.5f);
+		return (f->channels && channel >=0 && channel < f->channels->channelNum ? f->channels->channels[channel].panOffset + 0.5f : 0.5f);
 	}
 
 	TSFDEF float tsf_channel_get_volume(tsf* f, int channel)

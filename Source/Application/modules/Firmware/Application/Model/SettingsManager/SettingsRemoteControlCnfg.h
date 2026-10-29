@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsRemoteControlCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsRemoteControlCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsRemoteControlCnfg (const SettingsRemoteControlCnfg&) = delete;
 		SettingsRemoteControlCnfg& operator= (const SettingsRemoteControlCnfg&) = delete;

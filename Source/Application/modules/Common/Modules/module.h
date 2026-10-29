@@ -15,6 +15,7 @@ namespace Ignite {
 	class IParamChangeListener {
 	public:
 		virtual void onParameterChanged (moduleId_t moduleSrc, ParameterBase* param) = 0;
+		virtual void onParameterEdited(ParameterBase*) {}
 		virtual ~IParamChangeListener () { }
 	};
 
@@ -182,6 +183,7 @@ namespace Ignite {
 
 		void AddToUndoList (ParameterBase* param)
 		{
+			if(_listener) _listener->onParameterEdited(param);
 			if (_UndoParamsList.size () >= MAX_UNDO_COUNT)
 				_UndoParamsList.pop_back ();
 
@@ -197,6 +199,7 @@ namespace Ignite {
 
 			//remove old value
 			auto tmp = remove_if (_UndoDefaultList.begin (), _UndoDefaultList.end (), [&](UndoParam param) {return (param.ParamID == Id); });
+			_UndoDefaultList.erase(tmp,_UndoDefaultList.end());
 
 			UndoParam undoparam;
 			undoparam.MsgValue = value;

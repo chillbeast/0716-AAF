@@ -17,6 +17,9 @@
 #endif
 #define TSF_IMPLEMENTATION
 #include "tsf.h"
+#include "midi_synth_tests.h"
+#include "DesktopChanges.h"
+#include "../apps/ignite/DesktopCloseGuard.h"
 
 int main(int argc, char** argv)
 {
@@ -172,7 +175,28 @@ int main(int argc, char** argv)
             tsf_close(track);
             check(tsf_get_presetcount(font) == 1, "closing track keeps shared font alive");
         }
+        midiSynthTests(font,check);
         tsf_close(font);
+    }
+    {
+        Ignite::DesktopChanges changes;
+        changes.edited("startup"); check(!changes.dirty(),"startup initialization does not become an unsaved edit");
+        changes.begin(); changes.edited("pattern:A"); changes.edited("instrument:B"); changes.saved("pattern:A");
+        check(changes.dirty(),"saving one library item retains other unsaved edits");
+        changes.beginSave(); changes.saved("instrument:B"); changes.writeFailed();
+        check(!changes.finishSave(true) && changes.dirty(),"a failed write keeps the project dirty even after other items save");
+        changes.beginSave(); check(changes.finishSave(true) && !changes.dirty(),"a complete successful retry clears unsaved state");
+        bool dirty=true,saved=false,failSave=false;int asks=0,closed=0,errors=0;
+        DesktopCloseGuard::Answer answer;
+        auto guard=std::make_unique<DesktopCloseGuard>([&]{return dirty;},[&]{saved=true;return !failSave;},[&]{++closed;},
+            [&](auto callback){++asks;answer=std::move(callback);},[&]{++errors;});
+        guard->request();guard->request();check(asks==1 && closed==0,"repeated close requests display only one pending prompt");
+        answer(DesktopCloseGuard::cancel);check(closed==0 && !saved,"Cancel leaves edits and the application open");
+        guard->request();answer(DesktopCloseGuard::discard);check(closed==1 && !saved,"Discard closes without writing the project");
+        guard->request();failSave=true;answer(DesktopCloseGuard::save);check(closed==1 && errors==1,"failed Save reports an error and keeps the application open");
+        guard->request();failSave=false;answer(DesktopCloseGuard::save);check(closed==2 && saved,"successful Save permits closing");
+        dirty=false;guard->request();check(closed==3 && asks==4,"unchanged projects close without prompting");
+        dirty=true;guard->request();guard.reset();answer(DesktopCloseGuard::save);check(closed==3,"a delayed close-dialog callback cannot use a destroyed owner");
     }
     std::atomic<bool> stopped{false};
     std::thread waiter([&] { int item = 0; stopped = !queue.get(item, Ignite::TimeOut::kWaitForever); });

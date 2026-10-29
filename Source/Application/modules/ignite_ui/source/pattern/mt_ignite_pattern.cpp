@@ -269,6 +269,19 @@ namespace ui
 		}
 	}
 
+	bool IgnitePattern::insertBlankStep()
+	{
+		if (!patternCreated || selected < 0 || selected >= gPatterns.size()) return false;
+		const auto& pattern = gPatterns.getReference(selected);
+		if (!_PUiVirtualEngine->EngineInsertPatternStep(pattern.enginePatternData.patternName,
+			uint16_t(pattern.barIndex), 1, uint8_t(getCurrentBarStepId(pattern.stepIndex)), {})) return false;
+		requestDataFromEngine(selected);
+		refreshPatternUI();
+		setPatternEditIndication(true);
+		repaint();
+		return true;
+	}
+
 	void IgnitePattern::insertBar(IgniteBarInsert::insertCtlKey key, int barNumber)
 	{
 		auto& gPatternRef = gPatterns.getReference(selected);

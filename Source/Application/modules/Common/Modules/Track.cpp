@@ -623,144 +623,65 @@ void Track::pulse(int16_t sceneBarId, int16_t sceneStepId)
 #endif
 }
 
-uint8_t Track::getRandomData(uint8_t min, uint8_t max)
+int Track::getRandomData(int min, int max)
 {
 	if (min > max) {
 		std::swap(min, max);
 	}
 	static std::random_device rDev;
 	static std::default_random_engine rEng(rDev());
-	std::uniform_int_distribution<unsigned int> dataInRange(min, max);
-	return static_cast<uint8_t>(dataInRange(rEng));
+	std::uniform_int_distribution<int> dataInRange(min, max);
+	return dataInRange(rEng);
 }
 
 void Track::sculptUpdate(Pattern* pattern)
 {
-	if (!_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptButtonOnState)
-		return;
-
-	if (_songManager->activeSong->getEditScene()->getEditTrackId() != getTrackId())
-		return;
-
-	std::list<ClientPatternStepData> _stepdataList = pattern->PatternGetStepData(_trackBarId);
-	ClientPatternStepData* _stepdata = nullptr;
-	uint8_t TempValue = 0;
-
-	for (auto& stepIt : _stepdataList)
-	{
-		if (stepIt.stepId == _trackPlayStepId)
-		{
-			_stepdata = &stepIt;
-			break;
-		}
-	}
-
-	if (!_stepdata)
-		return;
-
-	if (_stepdata->nodeList.empty())
-	{
-		if (_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptMode == SculptMode::randomAbsolute ||
-			_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptMode == SculptMode::randomRelative)
-		{
-			auto rangeStart = _settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomRelativeNoteStart;
-			auto rangeEnd = _settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomRelativeNoteEnd;
-			TempValue = getRandomData(rangeStart, rangeEnd);
-			if (TempValue > MAX_NOTE)
-				TempValue /= 2;
-
-			ClientPatternNodeData nodeData;
-			nodeData.nodeId = 0;
-			nodeData.note = TempValue;
-			nodeData.velocity = 60;
-			nodeData.lenInSteps = 0;
-			nodeData.lenInTicks = 10;
-			nodeData.offset = 0;
-			nodeData.onState = true;
-			nodeData.step_id = _stepdata->stepId;
-			_stepdata->nodeList[TempValue][0] = nodeData;
-		}
-	}
-
-	if (_stepdata->nodeList.empty())
-		return;
-
-	for (auto nodeIt = _stepdata->nodeList.begin(); nodeIt != _stepdata->nodeList.end();)
-	{
-		bool nodeProcessed = false;
-		auto& offsetNodeMap = nodeIt->second;
-
-		if (static_cast<int8_t>(_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptParameter) & static_cast<int8_t>(SculptParameterSelect::velocity))
-		{
-			switch (_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptMode)
-			{
-			case SculptMode::relative:
-				TempValue = offsetNodeMap.begin()->second.velocity + _settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRelativeVelocity;
-				break;
-			case SculptMode::absolute:
-				TempValue = _settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptAbsoluteVelocity;
-				break;
-			case SculptMode::randomAbsolute:
-				TempValue = getRandomData(_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomAbsoluteVelocityStart,
-					_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomAbsoluteVelocityEnd);
-				break;
-			case SculptMode::randomRelative:
-				TempValue = getRandomData(_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomRelativeVelocityStart,
-					_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomRelativeVelocityEnd);
-				break;
-			default:
-				break;
-			}
-
-			for (auto& noteIT : offsetNodeMap)
-			{
-				noteIT.second.velocity = (TempValue < MAX_NOTE_VELOCITY ? TempValue : MAX_NOTE_VELOCITY / 2);
-			}
-		}
-
-		if (static_cast<int8_t>(_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptParameter) & static_cast<int8_t>(SculptParameterSelect::note))
-		{
-			switch (_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptMode)
-			{
-			case SculptMode::relative:
-				TempValue = offsetNodeMap.begin()->second.note + _settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRelativeNote;
-				break;
-			case SculptMode::absolute:
-				TempValue = _settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptAbsoluteNote;
-				break;
-			case SculptMode::randomAbsolute:
-				TempValue = getRandomData(_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomAbsoluteNoteStart,
-					_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomAbsoluteNoteEnd);
-				break;
-			case SculptMode::randomRelative:
-				TempValue = getRandomData(_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomRelativeNoteStart,
-					_settingsSculptModeCnfg->_SettingsSculptModeCnfgData.sculptRandomRelativeNoteEnd);
-				break;
-			default:
-				break;
-			}
-
-			if (TempValue > MAX_NOTE)
-				TempValue /= 2;
-
-			auto nodeData = std::move(offsetNodeMap);
-			nodeIt = _stepdata->nodeList.erase(nodeIt);
-			_stepdata->nodeList[TempValue] = std::move(nodeData);
-
-			for (auto& it : _stepdata->nodeList[TempValue])
-			{
-				it.second.note = TempValue;
-			}
-			nodeProcessed = true;
-		}
-
-		if (!nodeProcessed)
-		{
-			++nodeIt;
-		}
-	}
-
-	_songManager->engine.patternManager->PatternMngrSetStepData((moduleId_t)ModuleName::moduleSong, pattern->getName(), _trackBarId, _trackPlayStepId, *_stepdata, false);
+    const auto& config=_settingsSculptModeCnfg->_SettingsSculptModeCnfgData;
+    if (!config.sculptButtonOnState || _songManager->activeSong->getEditScene()->getEditTrackId()!=getTrackId()) return;
+    auto steps=pattern->PatternGetStepData(_trackBarId);
+    for(auto& step:steps)
+    {
+        if(step.stepId!=_trackPlayStepId) continue;
+        auto clamp=[](int value){return uint8_t(std::clamp(value,0,127));};
+        auto sculpt=[&](int original,int relative,int absolute,int relativeStart,int relativeEnd,int absoluteStart,int absoluteEnd)
+        {
+            switch(config.sculptMode)
+            {
+                case SculptMode::relative:return clamp(original+relative);
+                case SculptMode::absolute:return clamp(absolute);
+                case SculptMode::randomRelative:return clamp(original+getRandomData(relativeStart,relativeEnd));
+                case SculptMode::randomAbsolute:return clamp(getRandomData(absoluteStart,absoluteEnd));
+                default:return clamp(original);
+            }
+        };
+        if(step.nodeList.empty() && (config.sculptMode==SculptMode::randomAbsolute || config.sculptMode==SculptMode::randomRelative))
+        {
+            ClientPatternNodeData node{};
+            node.note=node.nodeId=sculpt(60,config.sculptRelativeNote,config.sculptAbsoluteNote,
+                config.sculptRandomRelativeNoteStart,config.sculptRandomRelativeNoteEnd,config.sculptRandomAbsoluteNoteStart,config.sculptRandomAbsoluteNoteEnd);
+            node.velocity=60;node.lenInTicks=10;node.onState=true;node.step_id=step.stepId;
+            step.nodeList[node.note][0]=node;
+        }
+        if(step.nodeList.empty()) return;
+        auto original=std::move(step.nodeList);step.nodeList.clear();
+        // Build a separate map: inserting pitches into the map being traversed can
+        // invalidate iterators and repeatedly sculpt a note during the same tick.
+        for(auto& pitch:original) for(auto& offset:pitch.second)
+        {
+            auto node=offset.second;
+            if(int(config.sculptParameter)&int(SculptParameterSelect::velocity))
+                node.velocity=sculpt(node.velocity,config.sculptRelativeVelocity,config.sculptAbsoluteVelocity,
+                    config.sculptRandomRelativeVelocityStart,config.sculptRandomRelativeVelocityEnd,
+                    config.sculptRandomAbsoluteVelocityStart,config.sculptRandomAbsoluteVelocityEnd);
+            if(int(config.sculptParameter)&int(SculptParameterSelect::note))
+                node.note=node.nodeId=sculpt(node.note,config.sculptRelativeNote,config.sculptAbsoluteNote,
+                    config.sculptRandomRelativeNoteStart,config.sculptRandomRelativeNoteEnd,
+                    config.sculptRandomAbsoluteNoteStart,config.sculptRandomAbsoluteNoteEnd);
+            step.nodeList[node.note][offset.first]=node;
+        }
+        _songManager->engine.patternManager->PatternMngrSetStepData(moduleId_t(ModuleName::moduleSong),pattern->getName(),_trackBarId,_trackPlayStepId,step,false);
+        return;
+    }
 }
 
 
@@ -2711,8 +2632,15 @@ void Track::sfReset(void)
 {
 	if (_trackSf != nullptr)
 	{
-		//release tsf resources
-		tsf_reset(static_cast<tsf*>(_trackSf));
+		auto* sf=static_cast<tsf*>(_trackSf);
+		const auto preset=tsf_channel_get_preset_index(sf,0),bank=tsf_channel_get_preset_bank(sf,0);
+		tsf_channel_sounds_off_all(sf,0);
+		tsf_reset(sf);
+		tsf_channel_set_presetindex(sf,0,preset);
+		tsf_channel_set_bank(sf,0,bank);
+		tsf_channel_set_volume(sf,0,0.9f);
+		igniteReverb.reset(); _Chorus[0].reset(); filter.reset();
+		for(auto& eq:eqFilter) eq.reset();
 	}
 }
 
@@ -2739,6 +2667,33 @@ void Track::sfNoteOff(uint8_t channel, uint8_t key)
 	if (_trackSf == nullptr)
 		return;
 	tsf_channel_note_off(static_cast<tsf*>(_trackSf), channel, key);
+}
+
+void Track::sfHandleMidi(const juce::MidiMessage& message)
+{
+    if (!_trackSf) return;
+    auto* sf=static_cast<tsf*>(_trackSf);
+    const int size=message.getRawDataSize();
+    // Every track owns an independent synth, so its routed channel maps to zero.
+    if (size>=3 && message.isNoteOn()) sfNoteOn(0,uint8_t(message.getNoteNumber()),message.getFloatVelocity());
+    else if (size>=3 && message.isNoteOff()) sfNoteOff(0,uint8_t(message.getNoteNumber()));
+    else if (size>=3 && message.isController())
+    {
+        const int cc=message.getControllerNumber();
+        tsf_channel_midi_control(sf,0,cc,message.getControllerValue());
+        if (cc==7 || cc==39 || cc==11 || cc==43 || cc==121)
+            tsf_channel_set_volume(sf,0,tsf_channel_get_volume(sf,0)*0.9f);
+        if (cc==120)
+        {
+            igniteReverb.reset(); _Chorus[0].reset(); filter.reset();
+            for(auto& eq:eqFilter) eq.reset();
+        }
+    }
+    else if (size>=3 && message.isPitchWheel()) tsf_channel_set_pitchwheel(sf,0,message.getPitchWheelValue());
+    else if (size>=2 && message.isProgramChange())
+        desktopPresetValid=tsf_channel_set_bank_preset(sf,0,tsf_channel_get_preset_bank(sf,0),message.getProgramChangeNumber())!=0;
+    else if (size>=2 && message.isChannelPressure()) tsf_channel_set_pressure(sf,0,message.getChannelPressureValue());
+    else if (size>=3 && message.isAftertouch()) tsf_channel_set_key_pressure(sf,0,message.getNoteNumber(),message.getAfterTouchValue());
 }
 
 void Track::sfSynthesizeAudio(void)

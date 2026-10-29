@@ -226,9 +226,15 @@ void SettingsRecordCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* para
 			doParamUndo ();
 			break;
 		case SettingsRecordCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsRecordCnfgParam::SettingsRecordCnfgSave:
 			_SettingsRecordCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
 			SaveData();
@@ -303,8 +309,17 @@ void SettingsRecordCnfg::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->UpdateSettingsRecordCnfgData(_SettingsRecordCnfgData, (_SettingsRecordCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->UpdateSettingsRecordCnfgData(_SettingsRecordCnfgData, (_SettingsRecordCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	ClearUndoList();
 	isUndilistNeedUpdate = true;
 
+}
+// Explicit desktop save does not change the selected storage location.
+bool SettingsRecordCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateSettingsRecordCnfgData(_SettingsRecordCnfgData, (_SettingsRecordCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    return true;
 }

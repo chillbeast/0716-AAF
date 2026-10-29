@@ -179,9 +179,15 @@ void SettingsRemoteControlCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBas
 			doParamUndo ();
 			break;
 		case SettingsRemoteControlCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsRemoteControlCnfgParam::SettingRemoteControlCnfgSave:
 			_SettingsRemoteControlCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
 			SaveData();
@@ -226,8 +232,17 @@ void SettingsRemoteControlCnfg::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->UpdateSettingsRemoteControlCnfgData(_SettingsRemoteControlCnfgData, (_SettingsRemoteControlCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->UpdateSettingsRemoteControlCnfgData(_SettingsRemoteControlCnfgData, (_SettingsRemoteControlCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	ClearUndoList();
 	isUndilistNeedUpdate = true;
 
+}
+// Explicit desktop save does not change the selected storage location.
+bool SettingsRemoteControlCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateSettingsRemoteControlCnfgData(_SettingsRemoteControlCnfgData, (_SettingsRemoteControlCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    return true;
 }

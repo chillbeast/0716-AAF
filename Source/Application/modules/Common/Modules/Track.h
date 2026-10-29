@@ -203,7 +203,7 @@ namespace Ignite
 		int8_t getTxInstrumentPort(void);
 		int8_t getTxInstrumentChannel(void);
 
-		uint8_t getRandomData(uint8_t min, uint8_t max);
+		int getRandomData(int min, int max);
 		void  sculptUpdate(Pattern* pattern);
 
 		void recordStepData (int16_t stepId, int8_t bardId, TickOffset_t tick);
@@ -310,6 +310,7 @@ namespace Ignite
 		void sfLoad(void);
 		void sfNoteOn(uint8_t channel, uint8_t key, float velocity);
 		void sfNoteOff(uint8_t channel, uint8_t key);
+		void sfHandleMidi(const juce::MidiMessage& message);
 		void sfSynthesizeAudio(void);
 		void sfSetProgram(void);
 		void sfChangeProgram(void);

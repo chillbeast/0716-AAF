@@ -54,7 +54,7 @@ namespace Ignite
 		void getParam(moduleId_t moduleSrc, paramId_t param)override;
 		void ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool SendNotification);
 		std::vector<IgniteParamList> getParamList(moduleId_t moduleSrc, std::vector<IgniteParamList>& paramlist)override;
-		void SaveInstrument(std::string name);
+		bool SaveInstrument(std::string name);
 		void modifyInstrumentNameIfDuplicate(std::string& name);
 		bool copyInstrument(std::string name);
 		void moveInstrument(uint64_t positionData);
@@ -75,6 +75,7 @@ namespace Ignite
 		void addInstrumentListener (IInstrumentListener* listener);
 
 		std::list<Instrument> instrumentList;
+		const std::string& desktopActiveName() const {return currentInstrumentName;}
 		IgniteEngine& engine;
 		int8_t _tmTrackId;
 	private:

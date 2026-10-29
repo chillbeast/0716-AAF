@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsSceneCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsSceneCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsSceneCnfg (const SettingsSceneCnfg&) = delete;
 		SettingsSceneCnfg& operator= (const SettingsSceneCnfg&) = delete;

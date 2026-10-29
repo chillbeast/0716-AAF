@@ -55,7 +55,9 @@ The local library scan found **1,094 SF2 files**. `CT4MGM.SF2` has **329 presets
 1. Benchmark sustained polyphony and audio/timing under heavy load. Deterministic create/edit/save/reopen, device audio and playback resizing through 64 tracks now have regression coverage; see [AUDIT_FIXES.md](AUDIT_FIXES.md).
 2. Verify live desktop MIDI routing with a loopback port and a controller.
 3. Exercise more varied SoundFonts and sustained preset preview/monitoring alongside editing. The bank-aware browser and saved non-GM assignments now have regression coverage.
-4. Extend coverage to detached MIDI tasks, all remaining settings writers and full singleton UI ownership. Step/live recording, ZIP backup round trips and firmware backup/restore now have internal regression coverage; see [DESKTOP_FEATURES.md](DESKTOP_FEATURES.md).
+4. Extend coverage to detached MIDI tasks, hardware-specific writers and full singleton UI ownership. Step/live recording, ZIP backup round trips and firmware backup/restore now have internal regression coverage; see [DESKTOP_FEATURES.md](DESKTOP_FEATURES.md).
 5. Establish hardware acceptance tests for the MCU, CV/Gate, sync, hotplug, calibration and update paths.
 
 Source paths above are relative to [`Source/Application/modules`](../Source/Application/modules).
+
+The desktop.3 pass adds MIDI controller support, checked settings saves and a close prompt, step insertion, and editor/performance regressions. See [AUDIT_FIXES.md](AUDIT_FIXES.md) for the specific fixes and verified limits. MIDI file import/export, song WAV export, multiple concurrent SF2 files and a functional Ignite VST remain future work.

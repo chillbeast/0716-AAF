@@ -174,9 +174,15 @@ void SettingsBRayCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* param,
 			break;
 		
 		case SettingsBRayCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsBRayCnfgParam::paramBRayCnfgSave:
 			_settingsBRayCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
 			SaveData();
@@ -222,7 +228,17 @@ void SettingsBRayCnfg::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->UpdateSettingsBRayCnfgData(_settingsBRayCnfgData, (_settingsBRayCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->UpdateSettingsBRayCnfgData(_settingsBRayCnfgData, (_settingsBRayCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	ClearUndoList();
 	isUndilistNeedUpdate = true;
+}
+
+// Explicit desktop save does not change the selected storage location.
+bool SettingsBRayCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateSettingsBRayCnfgData(_settingsBRayCnfgData, (_settingsBRayCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    return true;
 }

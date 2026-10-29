@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsSculptModeCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsSculptModeCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsSculptModeCnfg (const SettingsSculptModeCnfg&) = delete;
 		SettingsSculptModeCnfg& operator= (const SettingsSculptModeCnfg&) = delete;

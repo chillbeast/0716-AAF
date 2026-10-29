@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsUdsCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsUdsCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsUdsCnfg (const SettingsUdsCnfg&) = delete;
 		SettingsUdsCnfg& operator= (const SettingsUdsCnfg&) = delete;

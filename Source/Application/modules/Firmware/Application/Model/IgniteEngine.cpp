@@ -1,3 +1,6 @@
+#include "SettingsManager/SettingsRemoteControlCnfg.h"
+#include "SettingsManager/SettingsSculptModeCnfg.h"
+#include "SettingsManager/SettingsUdsCnfg.h"
 #include <stdlib.h>
 #include <iostream>
 #include "IgniteEngine.h"
@@ -492,6 +495,41 @@ void IgniteEngine::unsubscribe (moduleId_t module, paramId_t param, IListener* s
 }
 bool IgniteEngine::SaveAllData()
 {
+#ifdef _WIN32
+    auto stateLock=lockDesktopState();
+    desktopChanges.beginSave();
+    bool saved=true;
+    try
+    {
+        // A complete explicit save includes previously edited library items.
+        if(songManager->activeSong) saved=songManager->saveSong() && saved;
+        for(auto& instrument:instrumentManager->instrumentList) saved=instrumentManager->SaveInstrument(instrument.getName()) && saved;
+        for(auto& pattern:patternManager->patternList) saved=patternManager->SavePattern(&pattern,true) && saved;
+        saved=static_cast<SettingsGeneralCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingGnrlCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsMidiCnfg*>(_modules.at(moduleId_t(ModuleName::moduleMidiCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsCvioCnfg*>(_modules.at(moduleId_t(ModuleName::moduleCvioCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsSongCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingSongCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsSceneCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingSceneCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsTrackCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsTrackCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsPatternCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsPatternCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsRecordCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsRecordCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsBRayCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsBRayCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsRemoteControlCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsRemoteControlCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsSculptModeCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsSculptModeCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsUdsCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsUdsCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsMidiClkCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsMidiClkCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsTransposeControlCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsTransposeControlCnfg)))->saveForDesktop() && saved;
+        saved=static_cast<SettingsMidiMachineControlCnfg*>(_modules.at(moduleId_t(ModuleName::moduleSettingsMidiMachineControlCnfg)))->saveForDesktop() && saved;
+
+    }
+    catch(const std::exception& error)
+    {
+        juce::Logger::writeToLog("Save failed: "+juce::String(error.what())); saved=false;
+    }
+    if(saved) patternManager->desktopMarkSaved();
+    return desktopChanges.finishSave(saved);
+#else
+
 	auto stateLock = lockDesktopState();
     auto desktopSaveParam = [this](moduleId_t source, moduleId_t destination, paramId_t parameter, int value)
     {
@@ -524,6 +562,7 @@ bool IgniteEngine::SaveAllData()
 	desktopSaveParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleTrack, (paramId_t)TrackParam::paramSaveAll, 0);
 
 	return true;
+#endif
 }
 void IgniteEngine::onParameterChanged (moduleId_t moduleSrc, ParameterBase* param)
 {
@@ -535,6 +574,18 @@ void IgniteEngine::onParameterChanged (moduleId_t moduleSrc, ParameterBase* para
 			it.first->publish (param->GetModule ().GetModuleID (), moduleSrc, param->GetParamID (), param->getValue (), false);
 		}
 	}
+}
+
+void IgniteEngine::onParameterEdited(ParameterBase* parameter)
+{
+#ifdef _WIN32
+    const auto module=parameter->GetModule().GetModuleID();
+    if(module==(moduleId_t)ModuleName::moduleInstrument && instrumentManager)
+        desktopEdited("instrument:"+instrumentManager->desktopActiveName());
+    else if(module>=(moduleId_t)ModuleName::moduleSong && module<=(moduleId_t)ModuleName::moduleTrack && songManager && songManager->activeSong)
+        desktopEdited("song");
+    else if(module>=9 && module<=24) desktopEdited("settings:"+std::to_string(module));
+#endif
 }
 
 void IgniteEngine::SendResponse (moduleId_t module, moduleId_t moduleSrc, paramId_t param, const AnyType& value)
@@ -628,8 +679,7 @@ bool IgniteEngine::EngineRemovePatternBar (std::string patternName, uint16_t Bar
 bool IgniteEngine::EngineInsertPatternStep (std::string patternName, uint16_t BarId, uint8_t stepCount, uint8_t InsertAt, std::vector<ClientPatternStepData> ToStepDataList)
 {
 	auto stateLock = lockDesktopState();
-	//return patternManager->PatternInsertStep (patternName, BarId, stepCount, InsertAt, ToStepDataList);
-	return false; //TODO
+	return patternManager->PatternInsertStep(patternName,BarId,stepCount,InsertAt,{ToStepDataList.begin(),ToStepDataList.end()});
 }
 
 bool IgniteEngine::EngineAddNodeData (std::string patternName, uint16_t BarId, uint16_t stepId, ClientPatternNodeData nodeData)

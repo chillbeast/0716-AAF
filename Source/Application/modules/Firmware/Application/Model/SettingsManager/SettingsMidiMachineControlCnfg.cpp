@@ -185,9 +185,15 @@ void SettingsMidiMachineControlCnfg::ParamHandler (moduleId_t moduleSrc, Paramet
 			doParamUndo ();
 			break;
 		case SettingsMidiMachineControlCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsMidiMachineControlCnfgParam::SettingMidiMachineControlCnfgSave:
 			_SettingsMidiMachineControlCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
 			SaveData();
@@ -233,7 +239,17 @@ void SettingsMidiMachineControlCnfg::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->UpdateSettingsMidiMachineControlCnfgData(_SettingsMidiMachineControlCnfgData, (_SettingsMidiMachineControlCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->UpdateSettingsMidiMachineControlCnfgData(_SettingsMidiMachineControlCnfgData, (_SettingsMidiMachineControlCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	ClearUndoList();
 	isUndilistNeedUpdate = true;
+}
+
+// Explicit desktop save does not change the selected storage location.
+bool SettingsMidiMachineControlCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->UpdateSettingsMidiMachineControlCnfgData(_SettingsMidiMachineControlCnfgData, (_SettingsMidiMachineControlCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    SetDefaultUndoListData();
+    ClearUndoList();
+    return true;
 }

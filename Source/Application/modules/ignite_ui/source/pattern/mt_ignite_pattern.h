@@ -216,6 +216,7 @@ namespace ui
 		void insertBar(IgniteBarInsert::insertCtlKey key, int barNumber);
 		void copyPatternBar(IgniteBarCopy::copyBarCtlKey key, int fromBarId, int toBarId);
 		void savePattern();
+		bool insertBlankStep();
 
 		void updateLables();
 		void resetNoteSelection();

@@ -276,6 +276,13 @@ public:
         }
         if (code == juce::KeyPress::spaceKey) { tap(Param::paramKey_PLAY); return true; }
         if (code == juce::KeyPress::escapeKey) { tap(Param::paramKey_STOP); return true; }
+        if (code == juce::KeyPress::insertKey && key.getModifiers().isCommandDown()
+            && ui::AppMainmode::getMainModeInstance()->GetActiveTab()==mt::Ignite::tabs::PATTERN)
+        {
+            if (!ui::IgnitePattern::getAppPatternInstance()->insertBlankStep())
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,"Insert step","Cannot insert a step here. A pattern can contain up to 256 steps.");
+            return true;
+        }
         if (key.getModifiers().isCommandDown() && (code == 'S' || code == 's')) { tap(Param::paramKey_SAVE); return true; }
         return false;
     }

@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsMidiClkCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsMidiClkCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsMidiClkCnfg (const SettingsMidiClkCnfg&) = delete;
 		SettingsMidiClkCnfg& operator= (const SettingsMidiClkCnfg&) = delete;

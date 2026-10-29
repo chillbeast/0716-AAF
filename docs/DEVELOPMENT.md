@@ -47,7 +47,7 @@ Verified on Windows x64 with MSVC 19.44, Windows SDK 10.0.26100, CMake 4.3 and J
 |---|---|
 | Debug application build | Passed. Debug exit leak-report delay remains below. |
 | Release application and helper builds | Passed. |
-| Native regression runner | **54/54 Release and ASan checks; 55/55 Debug checks** (the extra Debug check measures string allocation release). |
+| Native regression runner | **82/82 Release and ASan checks; 83/83 Debug checks** (the extra Debug check measures string allocation release). |
 | Release app without a SoundFont | Seven application checks passed; SVG and touchscreen captured; normal exit code 0. |
 | Release app with CT4MGM | Seven application checks passed, including real track DSP rendering; normal exit code 0. |
 | Full create/edit/save/reopen workflow | **58 create/edit + 49 fresh-process checks passed in Release and under AddressSanitizer**, including real Windows audio at 44.1 kHz and interrupted-save recovery. |
@@ -80,7 +80,25 @@ Desktop.2 regression evidence: `build/features/20261028-181501` (75 Release chec
 
 ## Working conventions
 
-- Keep changes local until publishing is requested. `origin` is Music Tribe upstream; no pushes or upstream pull requests have been made.
+- `origin` is the community fork `chillbeast/0716-AAF`; `upstream` is Music Tribe. The user authorized the fork, pushes and community releases. Do not push changes to upstream.
 - Keep sample banks, personal settings and build outputs out of commits.
 - Do not change or terminate the user's KICK simulator while working here.
 - Build from PowerShell on this Windows host. Desktop checks can run without IGNITE hardware.
+
+
+## Desktop.3 verification
+
+Release, Debug and AddressSanitizer builds succeed. Native checks pass 82/82 in Release and ASan, 83/83 in Debug. The final Release suites pass: correctness 107 (50 setup + 53 MIDI/save/editor + 4 reopen), desktop features 75, layouts 61, workflow/audio/recovery 107, smoke 7 with a bank and 7 without, protocol 5. The same correctness, feature, layout and audio/recovery workflows pass under ASan without address-error reports. Counts include repeated arrangement setup; they are not unique supported features.
+
+Local evidence, relative to `Source/Application/build`:
+
+| Suite | Release | ASan |
+|---|---|---|
+| MIDI/save/editor correctness | `correctness/20261028-193921` | `correctness/20261028-193922` |
+| MIDI recording, SoundFonts, backup | `features/20261028-193940` | `features/20261028-193446` |
+| Compact/hardware layouts | `layout/20261028-193955` | `layout/20261028-193558` |
+| Device audio and interrupted-save recovery | `workflow/20261028-194011` | `workflow/20261028-193701` |
+| Font/no-font smoke | `smoke/20261028-194024` | ? |
+| Missing-font workflow (91 checks) | ? | `workflow/20261028-194113` |
+
+The CV settings pending-change check was added after the first ASan feature/layout pass; the final correctness pass explicitly covers editing and saving CV configuration. No physical CV voltage or calibration validation is implied. No MIDI input devices were available; internal messages exercise the actual router.

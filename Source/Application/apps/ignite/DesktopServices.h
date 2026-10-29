@@ -381,11 +381,11 @@ namespace IgniteDesktop
                 }
                 else
                 {
-                    self->engine.SaveAllData();
-                    // SaveAllData is synchronous on desktop; flush all library members before copying.
-                    self->engine.songManager->saveSong();
-                    for (auto& pattern : self->engine.patternManager->patternList) self->engine.patternManager->SavePattern(&pattern,true);
-                    for (auto& instrument : self->engine.instrumentManager->instrumentList) self->engine.instrumentManager->SaveInstrument(instrument.getName());
+                    if (!self->engine.SaveAllData())
+                    {
+                        self->status.setText("Save failed. Backup export stopped; your edits remain open.",juce::dontSendNotification);
+                        return;
+                    }
                     auto result=ProjectArchive::exportTo(ProjectArchive::dataRoot(),chooser.getResult());
                     self->status.setText(result.wasOk()?"Backup exported: "+chooser.getResult().getFullPathName():result.getErrorMessage(),juce::dontSendNotification);
                 }

@@ -199,9 +199,15 @@ void SettingsMidiClkCnfg::ParamHandler (moduleId_t moduleSrc, ParameterBase* par
 			break;
 
 		case SettingsMidiClkCnfgParam::paramSaveAll:
+#ifdef _WIN32
+            saveForDesktop(); break;
+#else
+
 			if (GetUndoParamsInList().empty())
 				break;
 			//fallthrough
+#endif
+
 		case SettingsMidiClkCnfgParam::saveCmd:
 			_settingsMidiClkCnfgData.DataLocation = (param->getValue ().get<int8_t> ());
 			SaveData();
@@ -257,7 +263,7 @@ void SettingsMidiClkCnfg::SaveData()
 {
 	if (GetUndoParamsInList().empty())
 		return;
-	engine.fileHandler->updateSettingsMidiClkCnfgData(_settingsMidiClkCnfgData, (_settingsMidiClkCnfgData.DataLocation ? getActiveSongName() : ""));
+	if(engine.fileHandler->updateSettingsMidiClkCnfgData(_settingsMidiClkCnfgData, (_settingsMidiClkCnfgData.DataLocation ? getActiveSongName() : "")) != FILE_OK) return;
 	ClearUndoList();
 	isUndilistNeedUpdate = true;
 }
@@ -618,3 +624,13 @@ bool SettingsMidiClkCnfg::isClkInFromUsbHostMidiPort(void)
 	}
 }
 
+
+// Explicit desktop save does not change the selected storage location.
+bool SettingsMidiClkCnfg::saveForDesktop()
+{
+    const auto result=engine.fileHandler->updateSettingsMidiClkCnfgData(_settingsMidiClkCnfgData, (_settingsMidiClkCnfgData.DataLocation ? getActiveSongName() : ""));
+    if(result!=FILE_OK) {engine.desktopChanges.writeFailed(); return false;}
+    setDefaultUndoListData();
+    ClearUndoList();
+    return true;
+}

@@ -131,7 +131,8 @@ namespace Ignite
 		bool PatternInsertStep(std::string patternName, uint16_t BarId, uint8_t stepCount, uint8_t InsertAt, std::list<ClientPatternStepData> ToStepDataList);
 		bool PatternMngrDelNodeData(std::string patternName, uint16_t BarId, uint16_t stepId, uint16_t nodeData, bool undoCmd);
 		Pattern* GetPattern(std::string patternName);
-		void SavePattern(Pattern* pattern, bool isCreate);
+		bool SavePattern(Pattern* pattern, bool isCreate);
+		void desktopMarkSaved();
 		void modifyPatternNameIfDuplicate(std::string& name);
 		bool copyPattern(std::string SrcpatternName, std::string DstpatternName);
 		void movePattern(uint64_t positionData);

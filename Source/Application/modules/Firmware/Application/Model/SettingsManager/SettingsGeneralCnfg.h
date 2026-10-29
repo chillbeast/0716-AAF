@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsGeneralCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsGeneralCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsGeneralCnfg (const SettingsGeneralCnfg&) = delete;
 		SettingsGeneralCnfg& operator= (const SettingsGeneralCnfg&) = delete;

@@ -11,6 +11,7 @@ namespace Ignite
 	class SettingsSongCnfg : public Module
 	{
 	public:
+        bool saveForDesktop();
 		SettingsSongCnfg (IParamChangeListener* listener, IgniteEngine& model);
 		SettingsSongCnfg (const SettingsSongCnfg&) = delete;
 		SettingsSongCnfg& operator= (const SettingsSongCnfg&) = delete;

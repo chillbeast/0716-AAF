@@ -1236,13 +1236,13 @@ void SongManager::SaveData()
 	if (SongManager::saveSong()) ClearUndoList();
 }
 // Save the selected song ID and master volume.
-void SongManager::saveSongData(void)
+bool SongManager::saveSongData(void)
 {
 	mainInfoData data;
 	engine.fileHandler->getMainInfo(data);
 	data.activeSongId = activeSongId;
 	data.masterVolume = _masterVolume;
-	engine.fileHandler->updateMainInfo(data);
+	return engine.fileHandler->updateMainInfo(data)==FILE_OK;
 }
 bool SongManager::saveSong(void)
 {
@@ -1255,7 +1255,8 @@ bool SongManager::saveSong(void)
         const auto oldName = GetDefaultDataFromList((paramId_t)SongParam::paramSongName).get<std::string>();
         if (oldName != activeSong->getName()) engine.get_fileHandler()->DeleteSong(oldName);
     }
-    saveSongData();
+    if(!saveSongData()) return false;
+    engine.desktopSaved("song");
     activeSong->songNameDirtyFlag = false;
     engine.sceneManager->markSaved();
     SetDefaultUndoListData();
@@ -2644,7 +2645,7 @@ int8_t SongManager::scaleNote(int8_t note)
 				//crossed B, so continue at C
 				if (checkNote > (int8_t)FTSRootNote::NoteMax)
 				{
-					checkNote = (int8_t)FTSRootNote::NoteMin + (int8_t)(i - 1);
+					checkNote = (normalisedNote + i) % NOTES_PER_OCTAVE;
 				}
 				noteLocation = std::find(scale.begin(), scale.end(), (int8_t)checkNote);
 				if (noteLocation != scale.end())
@@ -2662,7 +2663,7 @@ int8_t SongManager::scaleNote(int8_t note)
 				//crossed C, so continue at B
 				if (checkNote < (int8_t)FTSRootNote::NoteMin)
 				{
-					checkNote = (int8_t)FTSRootNote::NoteMax - (int8_t)(i - 1);
+					checkNote = (normalisedNote - i + NOTES_PER_OCTAVE) % NOTES_PER_OCTAVE;
 				}
 				noteLocation = std::find(scale.begin(), scale.end(), (int8_t)checkNote);
 				if (noteLocation != scale.end())
@@ -2674,7 +2675,7 @@ int8_t SongManager::scaleNote(int8_t note)
 		}
 	}
 
-	int8_t scaledNote = note + offset;
+	int16_t scaledNote = note + offset;
 
 	//check for overflow beyond g10
 	if (scaledNote > (int8_t)Note::noteMax)
@@ -4161,7 +4162,7 @@ bool SongManager::getFillModeTriggerState(void)
 	}
 	else if (_fillModeReleaseType == static_cast <int8_t> (FillReleaseMode::scene))
 	{
-		if (getCurrentPlaySceneId() == _fillModeBarId)
+		if (getCurrentPlaySceneId() == _fillModeSceneId)
 		{
 			ret = true;
 		}
@@ -4539,48 +4540,8 @@ void SongManager::createSongWithRandomData (uint8_t NumOfSongs, uint8_t NumOfSce
 
 void SongManager::sendMidiMessageInternal (MidiMessage msg, Track* track)
 {
-	if (track == nullptr)
-		return;
-
-	if (msg.isNoteOn ())
-	{
-		auto rawData = msg.getRawData ();
-		uint8_t note = rawData[1];
-		uint8_t velocity = rawData[2];
-		//uint8_t channel = (rawData[0] & 0x0F) + 1;//SFSynth uses channel range 1 - 16
-
-		track->sfNoteOn (0, note, (float)velocity/127); //preset 0
-		//juce::Logger::outputDebugString (std::to_string (note)+"-ON");
-	}
-	else if (msg.isNoteOff ())
-	{
-		auto rawData = msg.getRawData ();
-		uint8_t note = rawData[1];
-		//auto velocity = rawData[2];
-		//uint8_t channel = (rawData[0] & 0x0F) + 1;//SFSynth uses channel range 1 - 16
-
-		track->sfNoteOff (0, note); //preset 0
-		//juce::Logger::outputDebugString (std::to_string(note)+"-OFF");
-	}
-	else if (msg.isProgramChange ())
-	{
-		auto rawData = msg.getRawData ();
-		uint8_t pgm = rawData[1];
-		uint8_t channel = (rawData[0] & 0x0F) + 1;//SFSynth uses channel range 1 - 16
-		if (InternalChannelPgm[channel] != pgm) // Send only if the pgm is changed
-		{
-			InternalChannelPgm[channel] = pgm;
-			//tsf_channel_set_presetindex(TinySoundFont,);
-		}
-	}
-	else if (msg.isAllNotesOff())
-	{
-
-	}
-	else if (msg.isAllSoundOff())
-	{
-
-	}
+    auto stateLock = engine.lockDesktopState();
+    if (track) track->sfHandleMidi(msg);
 }
 
 void SongManager::handleRunningSongOnSwitch (void)
