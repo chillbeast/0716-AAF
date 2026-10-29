@@ -3,7 +3,8 @@ param(
     [string]$SoundFont = '',
     [string]$DataDirectory = '',
     [switch]$Touchscreen,
-    [ValidateSet('Hardware','Compact','Touchscreen')][string]$Layout
+    [ValidateSet('Hardware','Compact','Touchscreen')][string]$Layout,
+    [switch]$Song
 )
 $ErrorActionPreference = 'Stop'
 $explicitSoundFont = [bool]$SoundFont
@@ -33,8 +34,11 @@ try {
     }
     $env:IGNITE_LOG = Join-Path $build 'ignite.log'
     $launch = @{ FilePath = $exe; WorkingDirectory = (Split-Path -Parent $exe); PassThru = $true }
-    if ($Touchscreen) { $launch.ArgumentList = '--touchscreen' }
-    elseif ($Layout) { $launch.ArgumentList = '--'+$Layout.ToLowerInvariant() }
+    $arguments=@()
+    if ($Touchscreen) { $arguments+='--touchscreen' }
+    elseif ($Layout) { $arguments+='--'+$Layout.ToLowerInvariant() }
+    if($Song){$arguments+='--song'}
+    if($arguments.Count){$launch.ArgumentList=$arguments}
     $process = Start-Process @launch
     Write-Output "IGNITE started (PID $($process.Id)). Log: $env:IGNITE_LOG"
 } finally {

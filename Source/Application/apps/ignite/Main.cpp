@@ -210,6 +210,8 @@ public:
                 Timer::callAfterDelay(800,[this] {captureSettingsTabs(0);});
             });
         if (commandLine.contains("--desktop-settings")) Timer::callAfterDelay(1000,[this] {openDesktopSettings();});
+        if(commandLine.contains("--song"))Timer::callAfterDelay(1000,[]
+        {if(static_cast<IgniteEngine*>(_PUiVirtualEngine.get())->songManager->activeSong)IgniteDesktop::Demo::showSong();});
         if(commandLine.contains("--install-demo"))Timer::callAfterDelay(2500,[this]
         {
             try

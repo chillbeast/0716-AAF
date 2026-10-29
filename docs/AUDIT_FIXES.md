@@ -172,3 +172,43 @@ mutation. Existing songs and pending edits are protected. External MIDI output
 is unassigned for demo instruments. The 86-check suite covers audible live output,
 all five stems, full song duration, save/reopen and unavailable banks. Samples
 stay external; no rendered private-bank audio is published.
+
+
+## Desktop.10 playback UI and transport audit
+
+The five-track demo exposed a firmware UI bug: three track-count reads divided
+by 16 and rounded down, so a valid arrangement appeared to have zero track banks
+and Play stayed disabled. Round up the UI bank count without changing the engine's
+actual track count. Readiness checks now iterate existing scene/track vectors by
+reference, avoiding metadata copies and bounds based on stale count fields.
+
+The previous demo test invoked the model directly and missed the disabled button.
+The expanded 123-check suite clicks the actual firmware Play/Pause and Stop controls
+and routes Space/Escape through DesktopPanel, requires live audio callbacks and a
+non-silent peak, and repeats after reopening. It checks the five actual tracks
+remain five and that `--song` opens the saved project in Song view.
+
+The audit also found null-song Play dereferences and invalid empty-song transport
+state changes. Play, Pause and Rewind now reject absent songs/scenes. Windows
+rewind used a detached one-second timer holding a raw SongManager pointer, so a
+pending rewind could revive playback after Stop. A cancellable message-thread
+timer now expires on Stop, Pause, song switch or shutdown under the desktop model
+lock. The visible 250 ms rewind cooldown is asynchronous and cannot re-enable
+controls after Stop. Regression coverage checks that the rewind handler returns with its cooldown
+still pending and that playback stays idle beyond the pending one-second restart.
+
+No physical MIDI, CV or device firmware qualification is implied by these desktop
+checks. SoundFont samples and rendered private-library audio remain external.
+
+Verification on 2026-10-29: Release/Debug/ASan builds and both native CTest targets
+pass (84/85/84 legacy checks plus 31 SF2 checks per configuration). Final demo
+runs are `build/demo/20261029-134931` (Release, real GM bank) and
+`build/demo/20261029-134813` (ASan, generated original bank): 123 checks each.
+Release MIDI song/feature/correctness/workflow logs are `20261029-134554`,
+`20261029-134613`, `20261029-134630` and `20261029-134641`; ASan MIDI song,
+feature and workflow logs are `20261029-135026`, `20261029-135104` and
+`20261029-135139`. Counts are 131, 75, 107 and 107, including repeated setup.
+Release font/no-font smoke (`20261029-134654`) passes 14 checks. The final
+`asan_audit10_final2` prefix has no sanitizer reports. Earlier exploratory demo
+logs retain failures from fixed-delay assertions; the final tests wait for the
+asynchronous startup view and inspect rewind's pending cooldown synchronously.

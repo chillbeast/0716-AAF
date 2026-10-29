@@ -1,3 +1,30 @@
+# IGNITE Desktop v0.3.3-desktop.10
+
+Fixes disabled playback for imported/demo songs and desktop transport reliability.
+
+- Songs with 1-15 tracks now enable Play correctly. Partial groups of 16 round
+  up in the firmware UI; the actual arrangement keeps its original track count.
+  The five-track First Light demo plays through both the visible Play control
+  and Space, including after reopening.
+- Play, Pause and Rewind safely ignore a missing song or a song with no scenes.
+- A pending Windows rewind is cancelled by Stop, Pause, switching songs or
+  shutdown. It can no longer restart playback a second after Stop.
+- Rewind's 250 ms button cooldown now yields to the UI instead of blocking it.
+  Song readiness checks inspect existing tracks by reference without copying
+  their metadata or indexing beyond scene data.
+- The demo desktop shortcut opens the saved Song view. Other launches can opt
+  in with `Ignite.exe --song` or `scripts/run-ignite.ps1 -Song`.
+- Expanded the demo regression to 123 checks, including real firmware buttons,
+  panel keyboard input, non-silent device output, fresh-process playback,
+  rewind/Stop cancellation, empty-song commands and the startup view. Updated
+  manual and corresponding source are included; supply your own SF2 banks.
+
+Release, Debug and AddressSanitizer builds and both native CTest targets pass.
+Release and ASan pass 123 demo, 131 MIDI song, 75 feature and 107 device/recovery
+workflow checks. Release also passes 107 editor/MIDI correctness and 14 smoke
+checks. The demo is verified with both an original generated bank and the local
+GM bank. Final sanitizer runs report no address errors.
+
 # IGNITE Desktop v0.3.3-desktop.9
 
 A ready-to-play demo song and a clearer route to hearing the sequencer.

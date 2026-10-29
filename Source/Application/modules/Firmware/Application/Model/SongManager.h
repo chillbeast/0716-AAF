@@ -422,6 +422,10 @@ namespace Ignite
 
 		uint8_t _stopCount = 0;
 		std::atomic <uint8_t> _reStartCount = 0;
+#ifdef _WIN32
+        std::shared_ptr<int> desktopRestartToken;
+        void cancelDesktopRestart(){desktopRestartToken.reset();_reStartCount=0;}
+#endif
 		std::atomic<bool> _pulseHandlingInProgress{ false };
 
 		//Externl midi clock, freq calc timer

@@ -10,7 +10,7 @@ flowchart LR
     UI <--> Interface[UiInterface / IDevice messages]
     Interface <--> Engine[IgniteEngine and managers]
     Engine --> Sequence[Song / Scene / Track / Pattern / SequenceManager]
-    Sequence --> TSF[TinySoundFont per track]
+    Sequence --> TSF[FluidSynth track voices on Windows]
     TSF --> FX[JUCE effects and mix]
     FX --> Adapter[960-sample block adapter]
     Adapter --> Audio[JUCE audio device]
@@ -301,3 +301,19 @@ Final UI feature checks pass at Release `features/20261029-124937` and ASan
 `asan_demo9` and `asan_demo9_final` produce no address-error reports.
 Release/Debug/ASan apps build. The latest Projects screenshot and manual explain
 loading a default bank, previewing a sound, creating the demo and pressing Play.
+
+
+## Playback UI audit (desktop.10)
+
+Track counts in the firmware Song UI are banks of 16, while the model stores the
+actual number of tracks. Round bank reads up, including imported arrangements;
+never expand a five-track song simply to enable Play. Readiness checks use the
+scene's existing track vector and const references. The demo regression now has
+123 checks and exercises the actual button/keyboard paths with audible device
+output before and after reopening, rather than calling only the model.
+
+Windows delayed rewind uses a weak request token and a JUCE message-thread timer.
+Stop, Pause, changing songs and shutdown cancel the request while holding the
+model lock. The UI cooldown uses a SafePointer and checks the view/play mode
+before restoring the button, with no blocking wait. Empty/missing-song commands
+stay idle. The demo installer adds `-Song`; the runner forwards it as `--song`.

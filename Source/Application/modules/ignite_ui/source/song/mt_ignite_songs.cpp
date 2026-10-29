@@ -209,7 +209,7 @@ namespace ui
 						params.param = (paramId_t)SongParam::paramTrackCountCmd;
 						sceneParamList.push_back(params);
 						sceneParamList = _PUiVirtualEngine->getParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSong, sceneParamList);
-						gSongs.getReference(activeSong).num_of_tracks = (((int)sceneParamList[0].MsgValue.get<std::uint8_t>() / 16));
+						gSongs.getReference(activeSong).num_of_tracks = ((int(sceneParamList[0].MsgValue.get<std::uint8_t>()) + 15) / 16);
 
 						DBG(String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "Number of Tracks in Song : " + String(gSongs[activeSong].name) + " is: " + String(gSongs.getReference(activeSong).num_of_tracks));
 
@@ -287,7 +287,7 @@ namespace ui
 			params.param = (paramId_t)SongParam::paramTrackCountCmd;
 			songParams.push_back(params);
 			songParams = _PUiVirtualEngine->getParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSong, songParams);
-			gSongs.getReference(index).num_of_tracks = (((int)songParams[0].MsgValue.get<std::uint8_t>() / 16));
+			gSongs.getReference(index).num_of_tracks = ((int(songParams[0].MsgValue.get<std::uint8_t>()) + 15) / 16);
 			DBG(String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "Number of Tracks in Song : " + String(gSongs[index].name) + " is: " + String(gSongs.getReference(index).num_of_tracks));
 
 			params.param = (paramId_t)SceneParam::paramSceneCount;
@@ -349,7 +349,7 @@ namespace ui
 		setSongData(mt::Ignite::songsDataIndex::SONG_NAME, songParams[0].MsgValue.get<std::string>(), true);
 		setSongData(mt::Ignite::songsDataIndex::SWING, songParams[1].MsgValue.get<std::uint8_t>(), true);
 		setSongData(mt::Ignite::songsDataIndex::TEMPO, songParams[2].MsgValue.get<std::float_t>(), true);
-		setSongData(mt::Ignite::songsDataIndex::NUM_TRACKS_INDEX, (((int)songParams[3].MsgValue.get<std::uint8_t>() / 16)), true);
+		setSongData(mt::Ignite::songsDataIndex::NUM_TRACKS_INDEX, ((int(songParams[3].MsgValue.get<std::uint8_t>()) + 15) / 16), true);
 		setGlobalSwingState(songParams[4].MsgValue.get<bool>());
 		setGlobalTempoState(songParams[5].MsgValue.get<bool>());
 	}
@@ -848,12 +848,11 @@ namespace ui
 			auto& gSongRef = gSongs.getReference(selected);
 			if (gSongRef.sceneCreated)
 			{
-				for (auto scenes = 0; scenes < gSongRef.num_scenes; scenes++)
+				for (size_t scenes = 0; scenes < gSongRef.scene_data.size(); ++scenes)
 				{
 					{
-						for (auto i = 0; i < (gSongRef.num_of_tracks * 16); i++)
+						for (const auto& trackId : gSongRef.scene_data[scenes].track_data)
 						{
-							auto trackId = gSongRef.scene_data[scenes].track_data[i];
 
 							if ((scenes == gSongRef.current_scene) /*&& (gSongRef.scene_data[scenes].current_track == i)*/)
 							{
@@ -1611,8 +1610,15 @@ namespace ui
 		{
 			enableControlButton(IgniteControlOptions::REVERSE, false);
 			_PUiVirtualEngine->setParam((moduleId_t)ModuleName::moduleUI, (moduleId_t)ModuleName::moduleSong, (paramId_t)SongParam::paramReStartSongCmd, (uint8_t)0);
-			Time::waitForMillisecondCounter(Time::getMillisecondCounter() + 250);
-			enableControlButton(IgniteControlOptions::REVERSE, true);
+            juce::Component::SafePointer<IgniteSong> safe(this);
+            const auto tab=AppMainmode::getMainModeInstance()->GetActiveTab();
+            juce::Timer::callAfterDelay(250,[safe,tab]
+            {
+                if(!safe || AppMainmode::getMainModeInstance()->GetActiveTab()!=tab)return;
+                const auto mode=safe->_pSongOptCtl->getOperationMode();
+                if(mode==mt::Ignite::operatioMode::PLAY_MODE || mode==mt::Ignite::operatioMode::PLAY_REC_MODE)
+                    safe->enableControlButton(IgniteControlOptions::REVERSE,true);
+            });
 			DBG(String(__FUNCTION__) + "::" + String(__LINE__) + ":: Reverse Play");
 		}
 		else if (option == IgniteControlOptions::REC)

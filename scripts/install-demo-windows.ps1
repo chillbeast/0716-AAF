@@ -31,7 +31,7 @@ if(Test-Path -LiteralPath $shortcutPath){throw "Demo installed, but an existing 
 $shortcut=(New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
 $shortcut.TargetPath=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $launcher=Join-Path $PSScriptRoot 'run-ignite.ps1'
-$shortcut.Arguments="-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`" -DataDirectory `"$DataDirectory`""
+$shortcut.Arguments="-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`" -DataDirectory `"$DataDirectory`" -Song"
 $shortcut.WorkingDirectory=$repo;$shortcut.IconLocation=$exe+',0'
 $shortcut.Description='First Light demo project. Press Space / PLAY; Esc / STOP stops playback.'
 $shortcut.Save()

@@ -2,11 +2,13 @@
 #pragma once
 #include "DesktopDemo.h"
 #include "DesktopMediaJob.h"
+#include "DesktopPanel.h"
 
-class DesktopDemoTest
+class DesktopDemoTest : private juce::Timer
 {
 public:
     DesktopDemoTest(Ignite::IgniteEngine& model,std::function<void(int)> finished):engine(model),done(std::move(finished)){}
+    ~DesktopDemoTest() override {stopTimer();}
     void start(bool verify,bool unavailable)
     {
         using namespace Ignite;root=SongManager::desktopSettingsFile().getParentDirectory();
@@ -15,9 +17,15 @@ public:
             auto& songs=*engine.songManager;
             if(unavailable)
             {
+                auto transport=[&](SongParam command){engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleSong),paramId_t(command),uint8_t(0));};
+                transport(SongParam::paramPlaySongCmd);transport(SongParam::paramPauseSongCmd);transport(SongParam::paramReStartSongCmd);
+                check(!songs.activeSong && songs.getSystemState()==SYSTEM_STATE::IDLE,"remote transport commands with no selected song stay idle without crashing");
                 const auto count=songs.songInfoList.size();bool refused=false;
                 try{IgniteDesktop::Demo::create(engine);}catch(const std::exception& error){refused=juce::String(error.what()).contains("General MIDI SF2");}
                 check(refused && songs.songInfoList.size()==count && engine.patternManager->patternList.empty(),"missing/incomplete GM bank gives setup instructions without adding a partial demo");
+                transport(SongParam::paramAddSongCmd);engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleSong),paramId_t(SongParam::paramActiveSong),int32_t(0));
+                transport(SongParam::paramPlaySongCmd);transport(SongParam::paramPauseSongCmd);transport(SongParam::paramReStartSongCmd);
+                check(songs.activeSong && songs.activeSong->getNumOfScenes()==0 && songs.getSystemState()==SYSTEM_STATE::IDLE,"transport commands ignore a song with no scenes");
                 finish();return;
             }
             if(verify)
@@ -28,8 +36,7 @@ public:
                 check(songs.activeSong && songs.activeSong->getName()==name,"saved demo can be selected in a fresh process");
                 inspect();
                 check(!engine.desktopHasUnsavedChanges(),"demo reopens without pending edits");
-                songs.setActiveSong(0);check(songs.activeSong && songs.activeSong->getName()!=name,"existing song remains selectable after creating the demo");
-                finish();return;
+                verifyMode=true;beginTransport();return;
             }
             check(engine.SaveAllData(),"save the existing song before creating a demo");
             const auto count=songs.songInfoList.size();engine.desktopEdited("song");bool refused=false;
@@ -44,20 +51,76 @@ public:
             inspect();
             auto* manifest=new juce::DynamicObject();manifest->setProperty("name",juce::String(name));
             root.getChildFile("demo-test.json").replaceWithText(juce::JSON::toString(juce::var(manifest)));
-            IgniteDesktop::Demo::showSong();
-            const auto before=songs.desktopAudioCallbacks.load();songs.desktopAudioPeak=0;
-            engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleSong),paramId_t(SongParam::paramPlaySongCmd),uint8_t(0));
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            check(songs.getSystemState()==SYSTEM_STATE::PLAY && songs.desktopAudioCallbacks.load()>before+2,"demo PLAY drives the Windows audio output");
-            check(songs.desktopAudioPeak.load()>0.0001f,"demo notes produce a non-silent Windows output signal");
-            for(int i=0;i<2 && songs.getSystemState()!=SYSTEM_STATE::IDLE;++i)
-                engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleSong),paramId_t(SongParam::paramStopSongCmd),uint8_t(0));
-            songs.stopJuceAudioCallback();
-            renderNext();
+            beginTransport();
         }
         catch(const std::exception& error){check(false,juce::String(error.what()));finish();}
     }
 private:
+    void beginTransport()
+    {if(!verifyMode)IgniteDesktop::Demo::showSong();phase=0;deadline=juce::Time::getMillisecondCounterHiRes()+4000;startTimer(250);}
+    juce::Button* transportButton(const char* id)
+    {return dynamic_cast<juce::Button*>(ui::IgniteControlOptions::GetAppOptInstance()->findChildWithID(id));}
+    void click(const char* id,bool immediate=false)
+    {
+        auto* button=transportButton(id);check(button && button->isEnabled(),juce::String(id)+" is enabled for the five-track demo");
+        if(button)
+        {
+            // Rewind's cooldown must be checked before yielding to other timers.
+            if(immediate)ui::IgniteControlOptions::GetAppOptInstance()->buttonClicked(button);
+            else button->triggerClick();
+        }
+    }
+    void key(int code)
+    {
+        auto* parent=ui::getAppHome().getParentComponent();
+        auto* panel=parent?dynamic_cast<DesktopPanel*>(parent->getParentComponent()):nullptr;
+        check(panel && panel->keyPressed(juce::KeyPress(code)),"desktop keyboard transport reaches the firmware controls");
+    }
+    void timerCallback() override
+    {
+        using namespace Ignite;auto& songs=*engine.songManager;
+        try
+        {
+            switch(phase++)
+            {
+                case 0:
+                    if(ui::AppMainmode::getMainModeInstance()->GetActiveTab()!=mt::Ignite::tabs::SONG && juce::Time::getMillisecondCounterHiRes()<deadline){--phase;return;}
+                    juce::Logger::writeToLog("UI transport ready: tab="+juce::String(int(ui::AppMainmode::getMainModeInstance()->GetActiveTab()))+", song="+juce::String(songs.activeSong->getName()));
+                    if(verifyMode)check(ui::AppMainmode::getMainModeInstance()->GetActiveTab()==mt::Ignite::tabs::SONG,"song launch option opens the saved project ready for transport");
+                    check(ui::AppMainmode::getMainModeInstance()->GetActiveTab()==mt::Ignite::tabs::SONG,"demo opens in Song view before starting transport");
+                    check(int(ui::IgniteSong::getAppSongInstance()->getSongData(mt::Ignite::songsDataIndex::NUM_TRACKS_INDEX))==1,"five tracks occupy one visible track bank");
+                    before=songs.desktopAudioCallbacks.load();songs.desktopAudioPeak=0;click("firmware-play");deadline=juce::Time::getMillisecondCounterHiRes()+5000;break;
+                case 1:
+                    if((songs.getSystemState()!=SYSTEM_STATE::PLAY || songs.desktopAudioCallbacks.load()<=before+2 || songs.desktopAudioPeak.load()<=0.0001f) && juce::Time::getMillisecondCounterHiRes()<deadline){--phase;return;}
+                    juce::Logger::writeToLog("UI transport result: state="+juce::String(int(songs.getSystemState()))+", callbacks="+juce::String(songs.desktopAudioCallbacks.load()-before)+", peak="+juce::String(songs.desktopAudioPeak.load())+", song="+juce::String(songs.activeSong->getName()));
+                    check(songs.getSystemState()==SYSTEM_STATE::PLAY && songs.desktopAudioCallbacks.load()>before+2,"clicking the visible Play button starts live Windows audio");
+                    check(songs.desktopAudioPeak.load()>0.0001f,"visible Play control produces non-silent demo audio");
+                    click("firmware-play");break;
+                case 2:
+                    check(songs.getSystemState()==SYSTEM_STATE::PAUSE,"clicking the visible Play button again pauses playback");
+                    key(juce::KeyPress::escapeKey);break;
+                case 3:
+                    check(songs.getSystemState()==SYSTEM_STATE::IDLE,"Escape stops the demo through the panel input path");
+                    before=songs.desktopAudioCallbacks.load();songs.desktopAudioPeak=0;key(juce::KeyPress::spaceKey);deadline=juce::Time::getMillisecondCounterHiRes()+5000;break;
+                case 4:
+                    if((songs.getSystemState()!=SYSTEM_STATE::PLAY || songs.desktopAudioCallbacks.load()<=before+2 || songs.desktopAudioPeak.load()<=0.0001f) && juce::Time::getMillisecondCounterHiRes()<deadline){--phase;return;}
+                    check(songs.getSystemState()==SYSTEM_STATE::PLAY && songs.desktopAudioCallbacks.load()>before+2 && songs.desktopAudioPeak.load()>0.0001f,"Space starts audible playback through the panel input path");
+                    click("firmware-rewind",true);
+                    check(transportButton("firmware-rewind") && !transportButton("firmware-rewind")->isEnabled(),"rewind handler returns with its cooldown still pending");
+                    click("firmware-stop");startTimer(1400);break;
+                default:
+                    stopTimer();check(songs.getSystemState()==SYSTEM_STATE::IDLE,"visible Stop button returns transport to idle");
+                    check(songs.activeSong->_songData->gTrackCount==5,"UI playback preserves the actual five-track arrangement");
+                    check(transportButton("firmware-rewind") && !transportButton("firmware-rewind")->isEnabled(),"pending rewind does not re-enable controls after Stop");
+                    songs.stopJuceAudioCallback();
+                    if(verifyMode)
+                    {songs.setActiveSong(0);check(songs.activeSong && songs.activeSong->getName()!="Demo - First Light","existing song remains selectable after creating the demo");finish();}
+                    else renderNext();
+                    break;
+            }
+        }
+        catch(const std::exception& error){check(false,juce::String(error.what()));finish();}
+    }
     void check(bool passed,const juce::String& label)
     {++checks;if(!passed)++failures;juce::Logger::writeToLog(juce::String(passed?"PASS: ":"FAIL: ")+label);}
     void inspect()
@@ -108,8 +171,10 @@ private:
         }
         catch(const std::exception& error){check(false,juce::String(error.what()));finish();}
     }
-    void finish(){juce::Logger::writeToLog("Demo checks: "+juce::String(checks)+", failures: "+juce::String(failures));done(failures);}
+    void finish(){stopTimer();juce::Logger::writeToLog("Demo checks: "+juce::String(checks)+", failures: "+juce::String(failures));done(failures);}
     Ignite::IgniteEngine& engine;std::function<void(int)> done;
     IgniteDesktop::Media::Job job;juce::File root;
     int checks=0,failures=0,stem=-1;
+    int phase=0;uint64_t before=0;bool verifyMode=false;
+    double deadline=0;
 };

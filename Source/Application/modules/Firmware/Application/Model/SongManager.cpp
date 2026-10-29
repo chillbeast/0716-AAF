@@ -677,6 +677,7 @@ SongManager::~SongManager()
 void SongManager::shutdownDesktop()
 {
 #ifdef _WIN32
+    {auto lock=engine.lockDesktopState();cancelDesktopRestart();}
     if (dm != nullptr)
     {
         dm->removeAudioCallback(this);
@@ -1032,6 +1033,7 @@ void SongManager::ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool 
 
 			case SongParam::paramPlaySongCmd:
 			{
+                if(!activeSong || activeSong->_songData->sceneList.empty())break;
 				setSystemState(KEY_PRESSED::PLAY_KEY);
 
 				auto sceneId = param->getValue ().get<uint8_t> ();
@@ -1054,6 +1056,7 @@ void SongManager::ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool 
 			}
 
 			case SongParam::paramPauseSongCmd:
+                if(!activeSong || activeSong->_songData->sceneList.empty())break;
 				SongManager::pauseSong();
 				setSystemState(KEY_PRESSED::PAUSE_KEY);
 
@@ -1124,6 +1127,7 @@ void SongManager::ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool 
 
 			case SongParam::paramReStartSongCmd:
 			{
+                if(!activeSong || activeSong->_songData->sceneList.empty() || !_isSongPlaying)break;
 				int32_t sceneId = getCurrentPlaySceneId ();
 
 				//Press once restart scene
@@ -1134,8 +1138,24 @@ void SongManager::ParamHandler(moduleId_t moduleSrc, ParameterBase* param, bool 
 				{
 					_reStartCount = 1;
 					std::chrono::milliseconds duration (1000);//user to press 2nd and 3rd time, within 1 second from first press
+#ifdef _WIN32
+                    desktopRestartToken=std::make_shared<int>(0);
+                    const std::weak_ptr<int> request=desktopRestartToken;
+                    juce::Timer::callAfterDelay(int(duration.count()),[this,request,sceneId]
+                    {
+                        if(request.expired())return;
+                        auto guard=engine.lockDesktopState();
+                        if(request.expired() || CThread::desktopShutdownRequested())return;
+                        const auto presses=_reStartCount.exchange(0);
+                        desktopRestartToken.reset();
+                        if(!activeSong || !_isSongPlaying)return;
+                        const int target=presses==1?sceneId:presses==2?std::max(0,sceneId-1):0;
+                        stopSong();playSong(target);
+                    });
+#else
 					std::thread reStarttimerThread (reStartTimerFunc, this, std::ref(_reStartCount), sceneId, duration);//wait for second stop
 					reStarttimerThread.detach ();//no resources allocated, detach from caller thread and allow it to return
+#endif
 				}
 				else
 				{
@@ -1384,6 +1404,7 @@ void SongManager::createAndAddSong(void)
  */
 void SongManager::setActiveSong (int32_t index)
 {
+    auto stateLock=engine.lockDesktopState();
 	if ((index < 0) || (index >= numberOfSongs))
 	{
 		DBG (String (__FUNCTION__) + "::" + String (__LINE__) + "::" + "WARN index out of range " + String (index));
@@ -1396,6 +1417,9 @@ void SongManager::setActiveSong (int32_t index)
 		return;
 		//Active song is already set to the requsted value
 	}
+#ifdef _WIN32
+    cancelDesktopRestart();
+#endif
 
 	if (activeSong)
 	{
@@ -2043,7 +2067,7 @@ void SongManager::removeSong(void)//id starts from 0
 void SongManager::playSong(int32_t sceneId)
 {
 	auto stateLock = engine.lockDesktopState();
-	if (activeSong == nullptr)
+	if (activeSong == nullptr || activeSong->_songData->sceneList.empty())
 	{
 		//TODO warn
 		return;
@@ -2210,6 +2234,9 @@ void SongManager::initPlayScene(int32_t sceneId)
 void SongManager::pauseSong()
 {
 	auto stateLock = engine.lockDesktopState();
+#ifdef _WIN32
+    cancelDesktopRestart();
+#endif
 	if (_isSongPlaying == true)
 	{
 #ifdef __linux__
@@ -2251,6 +2278,9 @@ void SongManager::pauseSong()
 void SongManager::stopSong()
 {
 	auto stateLock = engine.lockDesktopState();
+#ifdef _WIN32
+    cancelDesktopRestart();
+#endif
 	if ((_isSongPlaying == true) || (_isSongPaused == true))
 	{
 

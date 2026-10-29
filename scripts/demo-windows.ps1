@@ -20,7 +20,7 @@ try {
         $env:IGNITE_DATA_DIR=Join-Path $root $(if($phase -in @('test','verify')){'data'}else{'data-'+$phase})
         $env:IGNITE_SOUNDFONT=if($phase -eq 'incomplete'){$alternate}elseif($phase -eq 'no-font'){Join-Path $root 'missing.sf2'}else{$font}
         $env:IGNITE_LOG=Join-Path $root "$phase.log"
-        $argument=if($phase -in @('test','verify')){"--demo-$phase"}else{'--demo-unavailable'}
+        $argument=if($phase -eq 'verify'){'--demo-verify --song'}elseif($phase -eq 'test'){'--demo-test'}else{'--demo-unavailable'}
         $process=Start-Process -FilePath $exe -ArgumentList $argument -WorkingDirectory (Split-Path -Parent $exe) -WindowStyle Hidden -PassThru
         $exited=$process.WaitForExit($TimeoutSeconds*1000)
         $result=[ordered]@{phase=$phase;exited=$exited;exitCode=$null;log=$env:IGNITE_LOG}

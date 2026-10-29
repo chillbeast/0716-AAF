@@ -24,6 +24,12 @@ namespace ui
 {
 	IgniteControlOptions::IgniteControlOptions()
 	{
+		playButton.setComponentID("firmware-play");
+        playButton.setName("Play / pause");
+        stopButton.setComponentID("firmware-stop");
+        stopButton.setName("Stop");
+        revButton.setComponentID("firmware-rewind");
+        revButton.setName("Rewind");
 		playButton.makeVisibleAndAddListner(this);
 		stopButton.makeVisibleAndAddListner(this);
 		recButton.makeVisibleAndAddListner(this);
