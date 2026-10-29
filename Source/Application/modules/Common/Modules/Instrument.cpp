@@ -131,6 +131,7 @@ Instrument::Instrument (InstrumentData instrumentData, /*int8_t tvKnob,*/ Instru
 	_instrumentData->tm = instrumentData.tm;
 	_instrumentMgr = instMgr;
 	_instrumentData->pgmChangeData = instrumentData.pgmChangeData;
+    _instrumentData->soundFontPath=instrumentData.soundFontPath;
 }
 
 Instrument::Instrument (const Instrument& source)

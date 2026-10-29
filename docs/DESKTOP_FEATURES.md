@@ -38,13 +38,17 @@ In Pattern view, Ctrl+Insert inserts a blank step and shifts later notes across 
 
 ![Actual SoundFont preset browser with a generated non-GM test bank](images/desktop-soundfonts.png)
 
-Choose **Load SoundFont...** to load an SF2 from your sample library. The chooser starts at `D:\Old Samples` on this machine. The bank is loaded directly from its existing location; it is not copied into the repository or project backup. Loading stops playback and replaces the shared bank for every internal instrument.
+Choose **Browse SF2...** to open a bank from your sample library. The chooser starts at `D:\Old Samples` on this machine. Browsing leaves assignments intact; select a preset, choose an instrument and press **Assign SF2 + preset** to save that file and program for the instrument. Different instruments can play different SF2 files simultaneously. Sample data is shared by path, with independent track voices and effects.
 
-The browser lists the actual preset names and **bank:program** numbers, starting at zero, including non-GM banks. Search the list, select a row and press **Preview C4**, or double-click a row. Preview plays a short note while stopped. To use it in a sequence, select an existing instrument below the list and press **Assign to instrument**. This enables internal sound and saves that instrument's selection. Create instruments using the firmware UI first.
+The browser lists actual preset names and zero-based **bank:program** numbers, including non-GM banks. Search, use **Preview C4**, or double-click a row. Preview uses the browsed bank independently of the default. Create instruments in the firmware UI first. The Assigned line displays the instrument's bank path.
 
-Custom bank/program choices survive project saves and restarts. The firmware's original GM picker remains available for conventional GM banks. A missing preset stays silent. A failed replacement load retains the current bank. SF3 support is not established, and the synth renders mono with eight voices allocated per track.
+**Set as default SF2** saves the browsed file as the startup default, retaining explicit instrument assignments. **Use default SF2** returns the selected instrument to the default, preserving a matching preset or choosing the first available preset. Assigning a bank or changing the default stops playback. Missing assigned files stay silent without substituting another bank; other instruments continue working. Backups retain paths/programs, with SF2 samples kept outside the archive.
 
-Startup selection is an explicit `IGNITE_SOUNDFONT` override, the saved `SoundFont` preference, an adjacent `Ignite.sf2`, then the original platform fallback. The local PowerShell launcher also uses the ignored build settings as a fallback. An invalid explicit environment override disables internal sound for diagnostic runs.
+Windows rendering is stereo at 48 kHz, with independent stereo EQ/filter/chorus and reverb. MIDI pan reaches the actual output. **Voices per track** offers 8, 16, 32, 64 and 128; the default is 32. The limit applies to all tracks; changing it stops playback and sounding notes. Layered presets use multiple voices per note. The audio adapter preserves stereo across driver block sizes and downmixes for mono output. SF3 and complete SoundFont modulators remain unqualified.
+
+EQ gain now uses -12 to +12 dB, with 0 dB bypass. Check existing nonzero saved EQ gains after upgrading: old values were used as linear multipliers and the shelves were reversed. Release time now applies independently to each synth.
+
+The startup default is an explicit `IGNITE_SOUNDFONT` override, the saved `SoundFont` preference, an adjacent `Ignite.sf2`, then the original platform fallback. The launcher also uses ignored build settings as a fallback. An invalid explicit override disables the default for diagnostic runs; instruments with valid explicit paths still work.
 
 ## Backups
 

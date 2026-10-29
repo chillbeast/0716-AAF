@@ -47,7 +47,7 @@ Verified on Windows x64 with MSVC 19.44, Windows SDK 10.0.26100, CMake 4.3 and J
 |---|---|
 | Debug application build | Passed. Debug exit leak-report delay remains below. |
 | Release application and helper builds | Passed. |
-| Native regression runner | **82/82 Release and ASan checks; 83/83 Debug checks** (the extra Debug check measures string allocation release). |
+| Native regression runner | **84/84 Release and ASan checks; 85/85 Debug checks** (the extra Debug check measures string allocation release). |
 | Release app without a SoundFont | Seven application checks passed; SVG and touchscreen captured; normal exit code 0. |
 | Release app with CT4MGM | Seven application checks passed, including real track DSP rendering; normal exit code 0. |
 | Full create/edit/save/reopen workflow | **58 create/edit + 49 fresh-process checks passed in Release and under AddressSanitizer**, including real Windows audio at 44.1 kHz and interrupted-save recovery. |
@@ -102,3 +102,27 @@ Local evidence, relative to `Source/Application/build`:
 | Missing-font workflow (91 checks) | ? | `workflow/20261028-194113` |
 
 The CV settings pending-change check was added after the first ASan feature/layout pass; the final correctness pass explicitly covers editing and saving CV configuration. No physical CV voltage or calibration validation is implied. No MIDI input devices were available; internal messages exercise the actual router.
+
+
+## Desktop.4 audio verification
+
+Release, Debug and ASan builds succeed. Native checks pass 84/84 Release/ASan and 85/85 Debug. The new sound suite totals 99 checks: 50 setup, 36 audio/effects/bank tests, 4 fresh-process backup checks, 4 missing-assigned-bank checks, and 5 missing-default-bank checks. Two generated original SF2 fixtures provide different left/right pitches and a different second bank. Rendering, preview, MIDI pan, polyphony, EQ response, reverb tails, chorus, per-synth release, undo, storage, stereo block handling and bank-failure isolation are covered.
+
+The existing correctness (107), feature (75), layout (61), workflow/audio/recovery (107), missing-font workflow (91 ASan) and font/no-font smoke suites are rerun. Counts include repeated setup. Tests use disposable data and internally generated MIDI; physical MIDI/CV/clock behavior and maximum aggregate real-time polyphony remain unqualified.
+
+
+Desktop.4 evidence (relative to `Source/Application/build`):
+
+| Suite | Release | ASan |
+|---|---|---|
+| Stereo/effects/multi-bank (99) | `sound/20261028-213056` | `sound/20261028-212759` |
+| MIDI/save/editor (107) | `correctness/20261028-213119` | `correctness/20261028-212939` |
+| Recording/SF2/archive (75) | `features/20261028-213129` | `features/20261028-213007` |
+| Layouts (61) | `layout/20261028-213143` | `layout/20261028-213039` |
+| Device/recovery workflow (107) | `workflow/20261028-213159` | `workflow/20261028-213124` |
+| Missing-font workflow (91) | - | `workflow/20261028-213156` |
+| Font/no-font smoke (14) | `smoke/20261028-213212` | - |
+
+All listed processes exit normally with no failing checks. The final sanitizer run produces no address-error report. The manual screenshot uses the generated bank-42 fixture and shows the actual revised SoundFonts controls.
+
+The desktop shortcut launcher also permits a missing saved default bank, allowing explicitly assigned banks to work. Mocked launch checks cover missing saved defaults, explicitly invalid paths and valid relative paths without opening another app instance.

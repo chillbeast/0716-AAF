@@ -179,6 +179,17 @@ int main(int argc, char** argv)
         tsf_close(font);
     }
     {
+        Ignite::FixedAudioBlockAdapter<4,2> stereo;
+        std::array<float,9> left{},right{};float* outputs[]{left.data(),right.data()};int sequence=0;
+        auto render=[&](float* block){for(int i=0;i<4;++i){block[i]=float(sequence+i);block[4+i]=-float(sequence+i);}sequence+=4;};
+        stereo.process(outputs,2,3,render);
+        float* tail[]{left.data()+3,right.data()+3};stereo.process(tail,2,6,render);
+        bool preserved=true;for(int i=0;i<9;++i)preserved &= left[i]==float(i) && right[i]==-float(i);
+        check(preserved,"stereo block adaptation preserves independent channels across partial callbacks");
+        stereo.reset();float mono[4]{};float* output[]{mono};stereo.process(output,1,4,render);
+        check(std::all_of(std::begin(mono),std::end(mono),[](float value){return value==0;}),"mono output downmixes both source channels");
+    }
+    {
         Ignite::DesktopChanges changes;
         changes.edited("startup"); check(!changes.dirty(),"startup initialization does not become an unsaved edit");
         changes.begin(); changes.edited("pattern:A"); changes.edited("instrument:B"); changes.saved("pattern:A");

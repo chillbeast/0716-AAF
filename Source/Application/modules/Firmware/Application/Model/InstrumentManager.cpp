@@ -24,6 +24,7 @@ InstrumentManager::InstrumentManager (IParamChangeListener* listener, IgniteEngi
 	AddParameter<uint8_t> ((paramId_t)InstrumentParam::paramDefaultNote, 0, 127, 0);
 	AddParameter<int> ((paramId_t)InstrumentParam::paramInternalSoundPgm, -1, 0x7fffffff, 0);//depends on sound font file, max value in current SF is < 1000
 	AddParameter<bool> ((paramId_t)InstrumentParam::paramInternalSound, false, true, false);
+    AddParameter<std::string>(paramId_t(InstrumentParam::paramDesktopSoundFontPath),"","","");
 	AddParameter<bool> ((paramId_t)InstrumentParam::paramMultiTimbralStatus, false, true, false);
 	AddParameter<bool> ((paramId_t)InstrumentParam::paramPolySpreadStatus, false, true, false);
 	AddParameter<bool> ((paramId_t)InstrumentParam::paramTransposeDefeatStatus, false, true, false);
@@ -46,7 +47,7 @@ InstrumentManager::InstrumentManager (IParamChangeListener* listener, IgniteEngi
 	AddParameter<bool> ((paramId_t)InstrumentParam::paramTVKnobPresenceQuery, 0, 1, 0);
 
 	AddParameter<int8_t> ((paramId_t)InstrumentParam::paramTVMidiCCNum, 0, 127, 0);
-	AddParameter<float> ((paramId_t)InstrumentParam::paramTVMidiCCValue, 0.0, 20000.0, 0.0);
+	AddParameter<float> ((paramId_t)InstrumentParam::paramTVMidiCCValue, -12.0, 20000.0, 0.0);
 	AddParameter<int8_t> ((paramId_t)InstrumentParam::paramTVMidiCCInitValue, 0, 127, 0);
 	AddParameter<int8_t> ((paramId_t)InstrumentParam::paramTVMidiCCMinValue, 0, 127, 0);
 	AddParameter<int8_t> ((paramId_t)InstrumentParam::paramTVMidiCCMaxValue, 0, 127, 0);
@@ -253,6 +254,13 @@ void InstrumentManager::ParamHandler (moduleId_t moduleSrc, ParameterBase* param
 					instrument->setDefaultNote (param->getValue ().get<uint8_t> ());
 				break;
 
+            case InstrumentParam::paramDesktopSoundFontPath:
+                if(instrument)
+                {
+                    instrument->_instrumentData->soundFontPath=param->getValue().get<std::string>();
+                    engine.songManager->desktopInstrumentFontChanged(instrument->getName());
+                }
+                break;
 			case InstrumentParam::paramInternalSoundPgm:
 				if (instrument)
 				{
@@ -709,6 +717,9 @@ std::vector<IgniteParamList> InstrumentManager::getParamList (moduleId_t moduleS
 					paramData = { (*it).param, instrument->getDefaultNote (), 0, 0 };
 				retParam.push_back (paramData);
 				break;
+            case InstrumentParam::paramDesktopSoundFontPath:
+                if(instrument)retParam.push_back({(*it).param,instrument->_instrumentData->soundFontPath,0,0});
+                break;
 			case InstrumentParam::paramInternalSoundPgm:
 				if (instrument)
 					paramData = { (*it).param, instrument->getInternalSoundPgm (), 0, 0 };
@@ -1049,6 +1060,9 @@ void InstrumentManager::getParam (moduleId_t moduleSrc, paramId_t param)
 			if (instrument)
 				engine.SendResponse ((moduleId_t)ModuleName::moduleInstrument, moduleSrc, param, instrument->getDefaultNote ());
 			break;
+        case InstrumentParam::paramDesktopSoundFontPath:
+            if(instrument)engine.SendResponse(moduleId_t(ModuleName::moduleInstrument),moduleSrc,param,instrument->_instrumentData->soundFontPath);
+            break;
 		case InstrumentParam::paramInternalSoundPgm:
 			if (instrument)
 				engine.SendResponse ((moduleId_t)ModuleName::moduleInstrument, moduleSrc, param, instrument->getInternalSoundPgm ());

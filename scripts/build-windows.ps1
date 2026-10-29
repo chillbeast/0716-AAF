@@ -50,6 +50,7 @@ if(!$SkipChecks) {
         & (Join-Path $PSScriptRoot 'workflow-windows.ps1') -Configuration Release -NodeEdit -AudioDevice -SimulateInterruptedSave
         & (Join-Path $PSScriptRoot 'features-windows.ps1') -Configuration Release
         & (Join-Path $PSScriptRoot 'correctness-windows.ps1') -Configuration Release
+        & (Join-Path $PSScriptRoot 'sound-windows.ps1') -Configuration Release
         & (Join-Path $PSScriptRoot 'layout-windows.ps1') -Configuration Release
         & (Join-Path $PSScriptRoot 'smoke-windows.ps1') -Configuration Release
     }

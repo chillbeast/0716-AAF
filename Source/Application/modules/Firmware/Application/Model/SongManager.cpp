@@ -517,6 +517,8 @@ std::map <int8_t, std::string> gMidiPortNameList =
 /* init and load TSF and sound font and use the copy in all song,scene tracks */
 void SongManager::init_tsf()
 {
+    const int savedVoices=int(juce::JSON::parse(desktopSettingsFile()).getProperty("SynthVoices",32));
+    if(savedVoices==8 || savedVoices==16 || savedVoices==32 || savedVoices==64 || savedVoices==128)desktopVoiceLimit=savedVoices;
     auto path = juce::SystemStats::getEnvironmentVariable("IGNITE_SOUNDFONT", "");
     if (path.isEmpty())
         path = juce::JSON::parse(desktopSettingsFile()).getProperty("SoundFont", "").toString();
@@ -5031,16 +5033,11 @@ void SongManager::prepareToPlay(int, double) { audioBlockAdapter.reset(); }
 void SongManager::releaseResources() {}
 void SongManager::getNextAudioBlock(const juce::AudioSourceChannelInfo& info)
 {
-    float* mono = info.buffer->getWritePointer(0, info.startSample);
-    audioBlockAdapter.process(&mono, 1, info.numSamples, [this](float* block)
-    {
-#ifdef USE_INTERNAL_20MS_TIMER
-        readFromBuffer(block);
-#else
-        renderTracksAndMix(block);
-#endif
-    });
-    desktopSourceSamples += info.numSamples;
+    float* outputs[2]{};
+    const int count=std::min(2,info.buffer->getNumChannels());
+    for(int channel=0;channel<count;++channel) outputs[channel]=info.buffer->getWritePointer(channel,info.startSample);
+    audioBlockAdapter.process(outputs,count,info.numSamples,[this](float* block){renderDesktopStereo(block);});
+    desktopSourceSamples+=info.numSamples;
 }
 
 
@@ -5060,19 +5057,20 @@ void SongManager::audioDeviceIOCallbackWithContext(const float** inputChannelDat
 {
 
     juce::ScopedNoDenormals noDenormals;
-    float* mono = nullptr;
-    for (int ch = 0; ch < deviceOutputChannels && mono == nullptr; ++ch) mono = outputChannelData[ch];
-    if (mono == nullptr || numSamples <= 0) return;
-    juce::AudioBuffer<float> output(&mono, 1, numSamples);
-    audioResampler.getNextAudioBlock({&output, 0, numSamples});
-    for (int ch = 0; ch < deviceOutputChannels; ++ch)
-        if (outputChannelData[ch] != nullptr && outputChannelData[ch] != mono)
-            std::copy_n(mono, numSamples, outputChannelData[ch]);
-    ++desktopAudioCallbacks;
-    desktopOutputSamples += numSamples;
-    float peak = desktopAudioPeak.load(std::memory_order_relaxed);
-    for (int i = 0; i < numSamples; ++i) peak = std::max(peak, std::abs(mono[i]));
-    desktopAudioPeak.store(peak, std::memory_order_relaxed);
+    float* outputs[2]{};int count=0;
+    for(int ch=0;ch<deviceOutputChannels;++ch)
+        if(outputChannelData[ch])
+        {
+            if(count<2) outputs[count++]=outputChannelData[ch];
+            else std::fill_n(outputChannelData[ch],numSamples,0.0f);
+        }
+    if(count==0 || numSamples<=0) return;
+    juce::AudioBuffer<float> output(outputs,count,numSamples);
+    audioResampler.getNextAudioBlock({&output,0,numSamples});
+    ++desktopAudioCallbacks;desktopOutputSamples+=numSamples;
+    float peak=desktopAudioPeak.load(std::memory_order_relaxed);
+    for(int ch=0;ch<count;++ch) for(int i=0;i<numSamples;++i) peak=std::max(peak,std::abs(outputs[ch][i]));
+    desktopAudioPeak.store(peak,std::memory_order_relaxed);
 }
 
 void SongManager::startJuceAudioCallback (void)
@@ -5470,6 +5468,39 @@ void SongManager::stopAudioProcessingTimer(void)
 #endif /* USE_INTERNAL_20MS_TIMER */
 
 
+#ifdef _WIN32
+void SongManager::renderDesktopStereo(AudioDataType* buffer)
+{
+    std::fill_n(buffer,2*INTERNAL_AUDIO_20MS_BLOCK_SIZE,AudioDataType{});
+    std::unique_lock<std::recursive_mutex> lock(engine.stateMutex,std::try_to_lock);
+    if(!lock.owns_lock()) return;
+    float* channels[]{buffer,buffer+INTERNAL_AUDIO_20MS_BLOCK_SIZE};
+    juce::AudioBuffer<float> output(channels,2,INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+    auto mix=[&](Track& track)
+    {
+        track.sfSynthesizeAudio();
+        for(int ch=0;ch<2;++ch) output.addFrom(ch,0,track.audioBuff,ch,0,INTERNAL_AUDIO_20MS_BLOCK_SIZE,_masterVolume);
+    };
+    auto* scene=activeSong?activeSong->getPlayScene():nullptr;
+    if(scene) for(auto& track:scene->_sceneData->trackList) if(!track.trackMuted()) mix(track);
+    if(_isAuditioningOn && (_state==SYSTEM_STATE::IDLE || _state==SYSTEM_STATE::PAUSE))
+        for(int i=0;i<AUDITIONING_MAX_PORT;++i) if(isAuditioningTrackEnabled[i] && AuditioningTrack[i]) mix(*AuditioningTrack[i]);
+    if(desktopMonitorEnabled && !_isAuditioningOn && _state!=SYSTEM_STATE::PLAY && _state!=SYSTEM_STATE::LIVE_RECORD &&
+       activeSong && activeSong->editScene && activeSong->editScene!=scene && activeSong->editScene->editTrack)
+    {
+        auto* track=activeSong->editScene->editTrack;
+        if(track->getTrackTxInstrument() && track->getTrackTxInstrument()->getInternalSound()) mix(*track);
+    }
+}
+
+// Kept for existing firmware/offline callers that explicitly request a mono block.
+void SongManager::renderTracksAndMix(AudioDataType* buffer)
+{
+    AudioDataType stereo[2*INTERNAL_AUDIO_20MS_BLOCK_SIZE]{};
+    renderDesktopStereo(stereo);
+    for(int i=0;i<INTERNAL_AUDIO_20MS_BLOCK_SIZE;++i)buffer[i]=(stereo[i]+stereo[INTERNAL_AUDIO_20MS_BLOCK_SIZE+i])*0.5f;
+}
+#else
 #ifdef ENABLE_PARALLEL_EXE
 void SongManager::renderTracksAndMix(AudioDataType* buffer)
 {
@@ -5587,6 +5618,27 @@ void SongManager::renderTracksAndMix(AudioDataType* buffer)
     renderDesktopMonitor(buffer);
 }
 #endif//ENABLE_PARALLEL_EXE
+
+void SongManager::renderDesktopStereo(AudioDataType* buffer)
+{
+    renderTracksAndMix(buffer);
+    std::copy_n(buffer,INTERNAL_AUDIO_20MS_BLOCK_SIZE,buffer+INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+}
+#endif
+
+bool SongManager::setDesktopVoiceLimit(int voices)
+{
+    if(voices!=8 && voices!=16 && voices!=32 && voices!=64 && voices!=128) return false;
+    auto lock=engine.lockDesktopState();
+    if(voices==desktopVoiceLimit) return true;
+    if(activeSong){stopRecord();stopSong();setSystemState(KEY_PRESSED::STOP_KEY);}
+    desktopPanic();
+    if(activeSong)for(auto& scene:activeSong->_songData->sceneList)for(auto& track:scene._sceneData->trackList)track.unloadDesktopSoundFont();
+    for(auto& track:AuditioningTrack)if(track)track->unloadDesktopSoundFont();
+    desktopVoiceLimit=voices;
+    for(auto& track:AuditioningTrack)if(track)track->AuditioningTrackInit();
+    return true;
+}
 
 void SongManager::setTempoFromFrequency(float freqHz)
 {
@@ -7112,62 +7164,105 @@ juce::File SongManager::desktopSettingsFile()
     if (root.isEmpty()) root = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BehringerIgnite").getFullPathName();
     return juce::File(root).getChildFile("desktop.json");
 }
+std::shared_ptr<void> SongManager::acquireDesktopSoundFont(const std::string& path,std::string& error)
+{
+    auto lock=engine.lockDesktopState();
+    const juce::File file(juce::String::fromUTF8(path.c_str()));
+    const auto key=file.getFullPathName().toStdString();
+    if(auto found=desktopFontCache[key].lock()) {error.clear();return found;}
+    juce::FileInputStream input(file);
+    if(!input.openedOk()){error="Cannot open bank: "+path;return {};}
+    tsf_stream stream{};stream.data=&input;
+    stream.read=[](void* data,void* out,unsigned int count)->int{return static_cast<juce::FileInputStream*>(data)->read(out,int(count));};
+    stream.skip=[](void* data,unsigned int count)->int{auto& input=*static_cast<juce::FileInputStream*>(data);return input.setPosition(input.getPosition()+count)?1:0;};
+    auto* font=tsf_load(&stream);
+    if(!font || tsf_get_presetcount(font)==0){tsf_close(font);error="The file contains no usable SoundFont presets.";return {};}
+    tsf_set_output(font,Track::audioChannels==2?TSF_STEREO_UNWEAVED:TSF_MONO,INTERNAL_AUDIO_SAMPLE_RATE,0);
+    auto result=std::shared_ptr<void>(font,[](void* data){tsf_close(static_cast<tsf*>(data));});
+    desktopFontCache[key]=result;error.clear();return result;
+}
+
+std::string SongManager::soundFontPathForInstrument(Instrument* instrument) const
+{
+    return instrument && !instrument->_instrumentData->soundFontPath.empty()?instrument->_instrumentData->soundFontPath:desktopSoundFontPath;
+}
+
+std::shared_ptr<void> SongManager::soundFontForInstrument(Instrument* instrument,std::string& error)
+{
+    if(!instrument || instrument->_instrumentData->soundFontPath.empty()) {error=desktopDefaultFont?"":"No default SoundFont is loaded.";return desktopDefaultFont;}
+    return acquireDesktopSoundFont(instrument->_instrumentData->soundFontPath,error);
+}
+
 std::vector<SongManager::SoundFontPreset> SongManager::getDesktopSoundFontPresets()
 {
-    auto lock = engine.lockDesktopState();
-    std::vector<SoundFontPreset> presets;
-    auto* font = static_cast<tsf*>(_songTSf);
-    if (font)
-        for (int index = 0; index < tsf_get_presetcount(font); ++index)
-            presets.push_back({tsf_get_presetbank(font, index), tsf_get_presetnumber(font, index), index, tsf_get_presetname(font, index)});
+    auto lock=engine.lockDesktopState();std::vector<SoundFontPreset> presets;
+    auto* font=static_cast<tsf*>((desktopBrowserFont?desktopBrowserFont:desktopDefaultFont).get());
+    if(font)for(int index=0;index<tsf_get_presetcount(font);++index)
+        presets.push_back({tsf_get_presetbank(font,index),tsf_get_presetnumber(font,index),index,tsf_get_presetname(font,index)});
     return presets;
 }
-std::string SongManager::desktopPresetName(int value)
+
+std::string SongManager::desktopPresetName(int value,const std::string& instrumentName)
 {
-    auto lock = engine.lockDesktopState();
-    if (!SoundFontProgram::isCustom(value)) return {};
-    auto* font = static_cast<tsf*>(_songTSf);
-    const char* name = font ? tsf_bank_get_presetname(font, SoundFontProgram::bank(value), SoundFontProgram::program(value)) : nullptr;
-    return name ? name : "Preset unavailable in this bank";
+    auto lock=engine.lockDesktopState();if(!SoundFontProgram::isCustom(value))return {};
+    auto* instrument=engine.instrumentManager->getInstrument(instrumentName.empty()?engine.instrumentManager->desktopActiveName():instrumentName);
+    std::string error;auto handle=soundFontForInstrument(instrument,error);auto* font=static_cast<tsf*>(handle.get());
+    const auto* name=font?tsf_bank_get_presetname(font,SoundFontProgram::bank(value),SoundFontProgram::program(value)):nullptr;
+    return name?name:"Preset unavailable in assigned bank";
 }
-bool SongManager::loadDesktopSoundFont(const std::string& path, std::string& error)
+
+bool SongManager::browseDesktopSoundFont(const std::string& path,std::string& error)
 {
-    juce::FileInputStream input{juce::File(juce::String::fromUTF8(path.c_str()))};
-    if (!input.openedOk()) { error = "Cannot open the bank file."; return false; }
-    tsf_stream stream{};
-    stream.data = &input;
-    stream.read = [](void* data, void* out, unsigned int count) -> int
-        { return static_cast<juce::FileInputStream*>(data)->read(out, int(count)); };
-    stream.skip = [](void* data, unsigned int count) -> int
-        { auto& in = *static_cast<juce::FileInputStream*>(data); return in.setPosition(in.getPosition() + count) ? 1 : 0; };
-    auto* replacement = tsf_load(&stream);
-    if (!replacement || tsf_get_presetcount(replacement) == 0)
-    {
-        tsf_close(replacement);
-        error = "The file contains no usable SoundFont presets.";
-        return false;
-    }
-    tsf_set_output(replacement, TSF_MONO, INTERNAL_AUDIO_SAMPLE_RATE, 0);
-    tsf_set_max_voices(replacement, 8);
-    auto lock = engine.lockDesktopState();
-    if (engine.songManager == this)
-    {
-        stopSong();
-        setSystemState(KEY_PRESSED::STOP_KEY);
-        stopJuceAudioCallback();
-    }
-    if (activeSong)
-        for (auto& scene : activeSong->_songData->sceneList)
-            for (auto& track : scene._sceneData->trackList) track.unloadDesktopSoundFont();
-    for (auto& track : AuditioningTrack) if (track) track->unloadDesktopSoundFont();
-    tsf_close(static_cast<tsf*>(_songTSf));
-    _songTSf = replacement;
-    desktopSoundFontPath = path;
-    for (auto& track : AuditioningTrack) if (track) track->AuditioningTrackInit();
-    error.clear();
-    juce::Logger::writeToLog("SoundFont loaded: " + juce::String::fromUTF8(path.c_str()) + " (" + juce::String(tsf_get_presetcount(replacement)) + " presets)");
+    auto font=acquireDesktopSoundFont(path,error);if(!font)return false;
+    auto lock=engine.lockDesktopState();desktopBrowserFont=std::move(font);
+    desktopBrowserFontPath=juce::File(juce::String::fromUTF8(path.c_str())).getFullPathName().toStdString();
     return true;
 }
+
+bool SongManager::loadDesktopSoundFont(const std::string& path,std::string& error)
+{
+    auto font=acquireDesktopSoundFont(path,error);if(!font)return false;
+    auto lock=engine.lockDesktopState();
+    if(engine.songManager==this)
+    {
+        if(activeSong){stopRecord();stopSong();setSystemState(KEY_PRESSED::STOP_KEY);}
+        stopJuceAudioCallback();
+    }
+    if(activeSong)for(auto& scene:activeSong->_songData->sceneList)for(auto& track:scene._sceneData->trackList)track.unloadDesktopSoundFont();
+    for(auto& track:AuditioningTrack)if(track)track->unloadDesktopSoundFont();
+    desktopDefaultFont=font;desktopBrowserFont=std::move(font);_songTSf=desktopDefaultFont.get();
+    desktopSoundFontPath=desktopBrowserFontPath=juce::File(juce::String::fromUTF8(path.c_str())).getFullPathName().toStdString();
+    for(auto& track:AuditioningTrack)if(track)track->AuditioningTrackInit();
+    juce::Logger::writeToLog("SoundFont loaded: "+juce::String::fromUTF8(desktopSoundFontPath.c_str())+" ("+juce::String(tsf_get_presetcount(static_cast<tsf*>(_songTSf)))+" presets)");
+    return true;
+}
+
+void SongManager::desktopInstrumentFontChanged(const std::string& name)
+{
+    auto lock=engine.lockDesktopState();
+    if(activeSong)for(auto& scene:activeSong->_songData->sceneList)for(auto& track:scene._sceneData->trackList)
+        if(track.getTrackTxInstrument() && track.getTrackTxInstrument()->getName()==name)track.unloadDesktopSoundFont();
+}
+
+bool SongManager::assignDesktopSoundFont(const std::string& name,const std::string& path,int program,std::string& error)
+{
+    auto lock=engine.lockDesktopState();auto* instrument=engine.instrumentManager->getInstrument(name);
+    if(!instrument){error="Select an existing instrument.";return false;}
+    auto font=path.empty()?desktopDefaultFont:acquireDesktopSoundFont(path,error);
+    if(!font){if(error.empty())error="No default bank is loaded.";return false;}
+    const int bank=SoundFontProgram::isCustom(program)?SoundFontProgram::bank(program):(program>127?128:0);
+    const int number=SoundFontProgram::isCustom(program)?SoundFontProgram::program(program):(program>127?Track::getTsfPresetFromIgniteIndex(program):program);
+    if(tsf_get_presetindex(static_cast<tsf*>(font.get()),bank,number)<0){error="That preset is unavailable in the selected bank.";return false;}
+    if(activeSong){stopRecord();stopSong();setSystemState(KEY_PRESSED::STOP_KEY);}
+    auto command=[&](InstrumentParam param,AnyType value){return engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleInstrument),paramId_t(param),value);};
+    command(InstrumentParam::paramSetActiveInstrument,name);
+    const auto canonical=path.empty()?std::string{}:juce::File(juce::String::fromUTF8(path.c_str())).getFullPathName().toStdString();
+    command(InstrumentParam::paramDesktopSoundFontPath,canonical);
+    command(InstrumentParam::paramInternalSound,true);command(InstrumentParam::paramInternalSoundPgm,program);
+    if(!engine.instrumentManager->SaveInstrument(name)){error="Assignment changed, but saving failed. Keep Ignite open and retry Save.";return false;}
+    error.clear();return true;
+}
+
 void SongManager::receiveDesktopMidi(uint8_t port, const MidiMessage& message)
 {
     auto lock = engine.lockDesktopState();
@@ -7216,8 +7311,9 @@ void SongManager::desktopPanic()
 bool SongManager::desktopPreviewPreset(int presetIndex)
 {
     auto lock = engine.lockDesktopState();
-    if (_state != SYSTEM_STATE::IDLE || !_songTSf || presetIndex < 0 ||
-        presetIndex >= tsf_get_presetcount(static_cast<tsf*>(_songTSf))) return false;
+    if (_state != SYSTEM_STATE::IDLE || !(desktopBrowserFont?desktopBrowserFont:desktopDefaultFont) || presetIndex < 0 ||
+        presetIndex >= tsf_get_presetcount(static_cast<tsf*>((desktopBrowserFont?desktopBrowserFont:desktopDefaultFont).get()))) return false;
+    AuditioningTrack[0]->useDesktopSoundFont(desktopBrowserFont?desktopBrowserFont:desktopDefaultFont);
     setAuditioningPreset(0, presetIndex);
     setAuditioningState(true);
     HandleMidiInAuditioning(0, juce::MidiMessage::noteOn(1, 60, uint8_t(100)));

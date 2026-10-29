@@ -38,6 +38,7 @@ extern IDevice* EngineInit(void);
 #include "DesktopLayoutTest.h"
 #include "DesktopCloseGuard.h"
 #include "DesktopCorrectnessTest.h"
+#include "DesktopSoundTest.h"
 
 //==============================================================================
 #define SHOW_BOOT_IMAGE
@@ -200,6 +201,15 @@ public:
                 const bool verify=commandLine.contains("--correctness-verify");
                 int failures=verify?0:DesktopWorkflowTest::run(engine,false,true,false);
                 if(!failures) failures=DesktopCorrectnessTest::run(engine,*midiRouter,verify);
+                setApplicationReturnValue(failures?1:0);quit();
+            });
+        if(commandLine.contains("--sound-test") || commandLine.contains("--sound-verify") || commandLine.contains("--sound-missing"))
+            Timer::callAfterDelay(2500,[this,commandLine]
+            {
+                auto& engine=*static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+                const bool verify=commandLine.contains("--sound-verify"),missing=commandLine.contains("--sound-missing");
+                int failures=verify||missing?0:DesktopWorkflowTest::run(engine,false,true,false);
+                if(!failures)failures=DesktopSoundTest::run(engine,verify,missing);
                 setApplicationReturnValue(failures?1:0);quit();
             });
 		auto snapshotPath = SystemStats::getEnvironmentVariable("IGNITE_SNAPSHOT", "");

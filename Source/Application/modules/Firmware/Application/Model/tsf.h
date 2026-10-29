@@ -165,6 +165,7 @@ TSFDEF void tsf_set_volume(tsf* f, float global_gain);
 //   max_voices: maximum number to pre-allocate and set the limit to
 //   (tsf_set_max_voices returns 0 if allocation failed, otherwise 1)
 TSFDEF int tsf_set_max_voices(tsf* f, int max_voices);
+TSFDEF void tsf_set_noteReleaseTimeMs(tsf* f,int milliseconds);
 
 // Start playing a note
 //   preset_index: preset index >= 0 and < tsf_get_presetcount()
@@ -339,6 +340,7 @@ extern "C" {
 		int presetNum;
 		int voiceNum;
 		int maxVoiceNum;
+        int releaseTimeMs;
 		unsigned int voicePlayIndex;
 
 		enum TSFOutputMode outputmode;
@@ -425,7 +427,6 @@ extern "C" {
 	struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
 	struct tsf_voice_lfo { int samplesUntil; float level, delta; };
 
-	static int usrReleaseTimeConfigMs = 0;
 	static int usrAttackTimeConfigMs = 0;
 
 	struct tsf_region
@@ -1007,11 +1008,10 @@ extern "C" {
 		return 1;
 #endif
 	}
-	TSFDEF void tsf_set_noteReleaseTimeMs(int _usrReleaseTimeConfigMs)
-	{
-		if (_usrReleaseTimeConfigMs >= 0 && _usrReleaseTimeConfigMs < 5000)
-			usrReleaseTimeConfigMs = _usrReleaseTimeConfigMs;
-	}
+    TSFDEF void tsf_set_noteReleaseTimeMs(tsf* f,int milliseconds)
+    {
+        if(f) f->releaseTimeMs=milliseconds>0 && milliseconds<=5000?milliseconds:0;
+    }
 	TSFDEF void tsf_set_noteAttackTimeMs(int _usrAttackTimeConfigMs)
 	{
 		if (_usrAttackTimeConfigMs >= 0 && _usrAttackTimeConfigMs < 5000)
@@ -1019,14 +1019,7 @@ extern "C" {
 	}
 	static int tsf_voice_envelope_release_samples(struct tsf_voice_envelope* e, float outSampleRate)
 	{
-		if (usrReleaseTimeConfigMs && e->parameters.release)
-		{
-			// 48k in 1sec makes 48hz in 1ms from analysis 48hz creates .4ms; multiplied with 2.5 to create 1 ms (48 * 2.5 = 120)
-			// may this 2.5 added bez of mysterySlope = 9.226;
-			return (int)(120 * usrReleaseTimeConfigMs);
-		}
-		else
-			return (int)((e->parameters.release <= 0 ? TSF_FASTRELEASETIME : e->parameters.release) * outSampleRate);
+        return (int)((e->parameters.release<=0?TSF_FASTRELEASETIME:e->parameters.release)*outSampleRate);
 	}
 	static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short active_segment, float outSampleRate)
 	{
@@ -1208,6 +1201,7 @@ extern "C" {
 
 	static void tsf_voice_end(tsf* f, struct tsf_voice* v)
 	{
+        if(f->releaseTimeMs>0) v->ampenv.parameters.release=f->releaseTimeMs*0.001f;
 		// if maxVoiceNum is set, assume that voice rendering and note queuing are on separate threads
 		// so to minimize the chance that voice rendering would advance the segment at the same time
 		// we just do it twice here and hope that it sticks

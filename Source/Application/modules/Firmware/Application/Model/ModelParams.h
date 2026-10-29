@@ -1080,6 +1080,7 @@ namespace Ignite
 		ParamDeleteAllInstrument,
 		paramTrackEffectMuteUnmute,
 		paramSaveAll,
+		paramDesktopSoundFontPath,
 		paramInstrumentMax
 	};
 

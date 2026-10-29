@@ -375,13 +375,13 @@ namespace ui
 				slider[4].changeDisplayName(REVERB_DRY);
 				slider[5].setUnit("%", true);
 				slider[5].changeDisplayName(CHORUS_DEPTH);
-				slider[6].setUnit("db", true);
+				slider[6].setUnit("dB", true);
 				slider[6].changeDisplayName(EQ_GAIN);
-				slider[6].setRange(0, 2, 0.1f);
+				slider[6].setRange(-12, 12, 0.5f);
 				slider[6].setNumDecimalPlacesToDisplay(3);
 				slider[7].changeDisplayName(EQ_GAIN);
-				slider[7].setUnit("db", true);
-				slider[7].setRange(0, 2, 0.1f);
+				slider[7].setUnit("dB", true);
+				slider[7].setRange(-12, 12, 0.5f);
 				slider[7].setNumDecimalPlacesToDisplay(3);
 			}
 			else

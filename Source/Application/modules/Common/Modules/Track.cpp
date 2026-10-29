@@ -2592,14 +2592,17 @@ void Track::AuditioningTrackInit(void)
 	effectsInit();
 	_noteOnList.clear();
 	if (_trackSf == nullptr)
-		_trackSf = tsf_copy(static_cast<tsf*>(_songManager->get_tsf_instance()));
+    {
+        std::string error;desktopFontSource=_songManager->soundFontForInstrument(nullptr,error);
+        _trackSf=tsf_copy(static_cast<tsf*>(desktopFontSource.get()));
+    }
 	/* TSF init */
 	//_trackSf = tsf_load_filename(SOUND_FONT_FILE);
 	tsf* sf = static_cast<tsf*>(_trackSf);
 	if (sf == nullptr)
 		return;
-	tsf_set_output(sf, TSF_MONO, INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
-	tsf_set_max_voices(sf, 8);// 8 note polyphony
+	tsf_set_output(sf, (audioChannels==2?TSF_STEREO_UNWEAVED:TSF_MONO), INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
+	tsf_set_max_voices(sf, _songManager->desktopVoiceLimit);// 8 note polyphony
 	tsf_channel_set_volume(sf, 0, 0.9f);//set to 0.9 and apply Master volume later
 	tsf_channel_set_presetindex(static_cast<tsf*>(_trackSf), 0, 0);
 }
@@ -2622,8 +2625,8 @@ void Track::sfInit(void)
 	tsf* sf = static_cast<tsf*>(_trackSf);
 	if (sf == nullptr)
 		return;
-	tsf_set_output(sf, TSF_MONO, INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
-	tsf_set_max_voices(sf, 8);// 8 note polyphony
+	tsf_set_output(sf, (audioChannels==2?TSF_STEREO_UNWEAVED:TSF_MONO), INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
+	tsf_set_max_voices(sf, _songManager->desktopVoiceLimit);// 8 note polyphony
 	tsf_channel_set_volume(sf, 0, 0.9f);//set to 0.9 and apply Master volume later
 	sfSetProgram();
 }
@@ -2644,15 +2647,25 @@ void Track::sfReset(void)
 	}
 }
 
+void Track::useDesktopSoundFont(std::shared_ptr<void> font)
+{
+    unloadDesktopSoundFont();
+    desktopFontSource=std::move(font);
+    _trackSf=tsf_copy(static_cast<tsf*>(desktopFontSource.get()));
+    sfInit();
+}
+
 void Track::sfLoad(void)
 {
-	//tsf set up
-	if(_trackSf == nullptr)
-		_trackSf = tsf_copy(static_cast<tsf*>(_songManager->get_tsf_instance()));
-	//_trackSf = tsf_load_filename(SOUND_FONT_FILE);
-
-	sfInit();
-	//soundFontProgramCount = tsf_get_presetcount(trackSf);
+    const auto path=_songManager->soundFontPathForInstrument(getTrackTxInstrument());
+    if(!_trackSf || desktopLoadedFontPath!=path)
+    {
+        std::string error;
+        auto font=_songManager->soundFontForInstrument(getTrackTxInstrument(),error);
+        useDesktopSoundFont(std::move(font));desktopLoadedFontPath=path;
+        if(!_trackSf && !error.empty())juce::Logger::writeToLog("Instrument bank unavailable: "+juce::String(error));
+    }
+    else sfInit();
 }
 
 void Track::sfNoteOn(uint8_t channel, uint8_t key, float velocity)
@@ -2698,93 +2711,40 @@ void Track::sfHandleMidi(const juce::MidiMessage& message)
 
 void Track::sfSynthesizeAudio(void)
 {
-    float* desktopBuffer = _twentyMsBuffer;
-    audioBuff = juce::AudioBuffer<float>(&desktopBuffer, 1, INTERNAL_AUDIO_20MS_BLOCK_SIZE);
-	if (_trackSf == nullptr)
-	{
-		std::fill_n(_twentyMsBuffer, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 0.0f);
-		return;
-	}
+    float* channels[audioChannels]{};
+    for(int ch=0;ch<audioChannels;++ch) channels[ch]=_twentyMsBuffer+ch*INTERNAL_AUDIO_20MS_BLOCK_SIZE;
+    audioBuff=juce::AudioBuffer<float>(channels,audioChannels,INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+    if(!_trackSf) {audioBuff.clear();return;}
+    tsf_render_float(static_cast<tsf*>(_trackSf),_twentyMsBuffer,INTERNAL_AUDIO_20MS_BLOCK_SIZE,0);
+    processInternalEffects();
+}
+
+void Track::processInternalEffects()
+{
 #ifdef USE_INTERNAL_EFFECTS
-	float* TwentyMsBufferPtr = _twentyMsBuffer;
-	audioBuff = juce::AudioBuffer<float>(&TwentyMsBufferPtr, 1, INTERNAL_AUDIO_20MS_BLOCK_SIZE);
-	juce::dsp::AudioBlock<float> outputBlock(audioBuff);
-	dsp::ProcessContextReplacing<float> buffer(outputBlock);
+    auto channels=audioBuff.getArrayOfWritePointers();
+    juce::dsp::AudioBlock<float> block(audioBuff);
+    juce::dsp::ProcessContextReplacing<float> context(block);
+    for(const auto effect:audioEffectsOrder)
+    {
+        switch(effect)
+        {
+            case AUDIO_REVERB:
+                if(theReverbParameters.width>0)
+                {
+                    if constexpr(audioChannels==2) igniteReverb.processStereo(channels[0],channels[1],INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+                    else igniteReverb.processMono(channels[0],INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+                }
+                break;
+            case AUDIO_CHORUS:if(chorusStatus[0])_Chorus[0].process(context);break;
+            case AUDIO_EQ_L:if(EQisEnabled[FILTER_LOWEQ_INDEX])eqFilter[FILTER_LOWEQ_INDEX].process(context);break;
+            case AUDIO_EQ_H:if(EQisEnabled[FILTER_HIGHEQ_INDEX])eqFilter[FILTER_HIGHEQ_INDEX].process(context);break;
+            case AUDIO_FILTER:filter.process(context);break;
+            default:break;
+        }
+    }
+    trackGain.process(context);
 #endif
-	if (_trackSf != nullptr)
-	{
-
-#ifdef AUDIO_RENDER_TYPE_SHORT
-
-		short tmpBuffer[INTERNAL_AUDIO_20MS_BLOCK_SIZE] = { 0 };
-		tsf_render_short(static_cast<tsf*>(_trackSf), tmpBuffer, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 0);
-
-		/* WORK AROUND FOR NOISE ISSUE : 
-		* Using short rendering shows no crackling noise after render.
-		* So use render_short and then convert back to float(AudioDataType) as the remaning chain expects float data -> effects and juce */
-		for (int i = 0; i < INTERNAL_AUDIO_20MS_BLOCK_SIZE; ++i)
-		{
-			_twentyMsBuffer[i] = (float)tmpBuffer[i] / 32768;
-		}
-
-#else
-
-		tsf_render_float(static_cast<tsf*>(_trackSf), _twentyMsBuffer, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 0);
-
-#endif /* !AUDIO_RENDER_TYPE_SHORT */
-
-#ifdef LOG_PCM_TO_FILE
-		// Log raw synthesized data here
-#endif
-
-	}
-#ifdef USE_INTERNAL_EFFECTS
-	for (auto index = 0; index < AUDIO_EFFECT_MAX; index++)
-	{
-		switch (audioEffectsOrder[index])// execute the effects in the order user requested
-		{
-		case AUDIO_REVERB:
-		{
-			if (theReverbParameters.width != 0)
-			{
-				igniteReverb.processMono(_twentyMsBuffer, INTERNAL_AUDIO_20MS_BLOCK_SIZE);
-			}
-		}
-		break;
-
-		case AUDIO_CHORUS:
-			if (chorusStatus[1] == true)
-				_Chorus[0].process(buffer);
-			break;
-		case AUDIO_EQ_L:
-		{
-			if (EQisEnabled[FILTER_HIGHEQ_INDEX])
-				eqFilter[FILTER_HIGHEQ_INDEX].process(buffer);
-		}
-		break;
-		case AUDIO_EQ_H:
-		{
-			if (EQisEnabled[FILTER_LOWEQ_INDEX])
-				eqFilter[FILTER_LOWEQ_INDEX].process(buffer);
-		}
-		break;
-		case AUDIO_FILTER:
-		{
-			filter.process(buffer);
-		}
-		break;
-		default:
-			break;
-		}
-	}
-#ifdef LOG_PCM_TO_FILE
-//Log data after effets are applied
-#endif
-
-	//Volume affected by the filter gain and other params .. Volume applied after all effects
-	trackGain.process(buffer);
-#endif /* USE_INTERNAL_EFFECTS */
-
 }
 
 void Track::sfSetProgram(void)
@@ -2826,141 +2786,54 @@ void Track::sfChangeProgram(void)
 }
 
 
-void Track::setInternalAudioEffects(uint8_t knobID, float value, bool isAlternate)
+void Track::updateEq(int index)
+{
+    EQisEnabled[index]=std::abs(EQgainDb[index])>0.0001f;
+    EQcutoffGain[index]=juce::Decibels::decibelsToGain(EQgainDb[index]);
+    auto coefficients=index==FILTER_HIGHEQ_INDEX
+        ? juce::dsp::IIR::Coefficients<float>::makeHighShelf(INTERNAL_AUDIO_SAMPLE_RATE,EQcutoffFreq[index],0.7071f,EQcutoffGain[index])
+        : juce::dsp::IIR::Coefficients<float>::makeLowShelf(INTERNAL_AUDIO_SAMPLE_RATE,EQcutoffFreq[index],0.7071f,EQcutoffGain[index]);
+    *eqFilter[index].state=*coefficients;
+}
+
+void Track::setInternalAudioEffects(uint8_t knobID,float value,bool alternate)
 {
 #ifdef USE_INTERNAL_EFFECTS
-	uint8_t knobBank = knobID % 8;
-	switch (knobBank)
-	{
-	case (uint8_t)InternalAudioCC::RELEASE:
-		/*if(isAlternate)
-			tsf_set_noteAttackTimeMs(value);
-		else*/
-		tsf_set_noteReleaseTimeMs(static_cast<int>(value));
-		break;
-
-	case (uint8_t)InternalAudioCC::FILTER_CUTOFF:
-		if (isAlternate)
-		{
-			if (value == 12)
-				filter.setMode(dsp::LadderFilter<float>::Mode::LPF12);
-			else
-				filter.setMode(dsp::LadderFilter<float>::Mode::LPF24);
-		}
-		else if (value != 0)
-		{
-			if (value <= 22)
-			{
-				filter.setEnabled(false);
-			}
-			else
-			{
-				filter.setEnabled(true);
-				filter.setCutoffFrequencyHz(value);
-			}
-		}
-		break;
-
-	case (uint8_t)InternalAudioCC::RESONANCE:
-		filter.setResonance(value * 0.01f);
-		break;
-
-	case (uint8_t)InternalAudioCC::VOLUME:
-		if (isAlternate)
-			trackGain.setGainLinear(value * 0.01f);
-		else
-			_songManager->setMasterVolume(value * 0.01f);
-		break;
-
-	case (uint8_t)InternalAudioCC::REVERB:
-		if (isAlternate)
-			theReverbParameters.dryLevel = (value * 0.01f);
-		else
-			theReverbParameters.width = (value * 0.01f);
-		break;
-
-	case (uint8_t)InternalAudioCC::CHORUS:
-		if (value == 0)
-		{
-			chorusStatus[1] = false;
-		}
-		else
-		{
-			chorusStatus[1] = true;
-			if (isAlternate)
-				_Chorus[0].setDepth(value * 0.01f);
-			else
-				if (value >= 100)
-					_Chorus[0].setRate(99);
-				else
-					_Chorus[0].setRate(value);
-		}
-		break;
-
-		//case (uint8_t)InternalAudioCC::EQ_LOW:
-	case (uint8_t)InternalAudioCC::EQ_HIGH:
-		if (isAlternate)
-		{
-			if (value)
-				EQisEnabled[FILTER_HIGHEQ_INDEX] = true;
-			else
-				EQisEnabled[FILTER_HIGHEQ_INDEX] = false;
-
-			EQcutoffGain[FILTER_HIGHEQ_INDEX] = (value + 0.00001f);
-			eqFilter[FILTER_HIGHEQ_INDEX].coefficients = juce::dsp::IIR::Coefficients<float>::makeLowShelf(INTERNAL_AUDIO_SAMPLE_RATE, EQcutoffFreq[FILTER_HIGHEQ_INDEX], 1, EQcutoffGain[FILTER_HIGHEQ_INDEX]);
-		}
-		else
-		{
-			if (value)
-				EQisEnabled[FILTER_HIGHEQ_INDEX] = true;
-			else
-				EQisEnabled[FILTER_HIGHEQ_INDEX] = false;
-
-			if (value)
-			{
-				EQcutoffFreq[FILTER_HIGHEQ_INDEX] = (value);
-				if (EQcutoffGain[FILTER_HIGHEQ_INDEX])
-					eqFilter[FILTER_HIGHEQ_INDEX].coefficients = juce::dsp::IIR::Coefficients<float>::makeLowShelf(INTERNAL_AUDIO_SAMPLE_RATE, EQcutoffFreq[FILTER_HIGHEQ_INDEX], 1, EQcutoffGain[FILTER_HIGHEQ_INDEX]);
-			}
-		}
-		EQisEnabled[FILTER_HIGHEQ_INDEX] = (EQcutoffGain[FILTER_HIGHEQ_INDEX] > 0.0001f);//added multiple check here for EQisEnabled to avoid complex checks for each ticks when playing
-		break;
-
-		//case (uint8_t)InternalAudioCC::EQ_HIGH:
-	case (uint8_t)InternalAudioCC::EQ_LOW:
-		if (isAlternate)
-		{
-			if (value)
-				EQisEnabled[FILTER_LOWEQ_INDEX] = true;
-			else
-				EQisEnabled[FILTER_LOWEQ_INDEX] = false;
-
-			EQcutoffGain[FILTER_LOWEQ_INDEX] = (value + 0.00001f);
-			eqFilter[FILTER_LOWEQ_INDEX].coefficients = juce::dsp::IIR::Coefficients<float>::makeHighShelf(INTERNAL_AUDIO_SAMPLE_RATE, EQcutoffFreq[FILTER_LOWEQ_INDEX], 1, EQcutoffGain[FILTER_LOWEQ_INDEX]);
-		}
-		else
-		{
-			if (value)
-				EQisEnabled[FILTER_LOWEQ_INDEX] = true;
-			else
-				EQisEnabled[FILTER_LOWEQ_INDEX] = false;
-
-			if (value)
-			{
-				EQcutoffFreq[FILTER_LOWEQ_INDEX] = value;
-				if (EQcutoffGain[FILTER_LOWEQ_INDEX])
-					eqFilter[FILTER_LOWEQ_INDEX].coefficients = juce::dsp::IIR::Coefficients<float>::makeHighShelf(INTERNAL_AUDIO_SAMPLE_RATE, EQcutoffFreq[FILTER_LOWEQ_INDEX], 1, EQcutoffGain[FILTER_LOWEQ_INDEX]);
-			}
-		}
-		EQisEnabled[FILTER_LOWEQ_INDEX] = (EQcutoffGain[FILTER_LOWEQ_INDEX] > 0.0001f);//added multiple check here for EQisEnabled to avoid complex checks for each ticks when playing
-		break;
-
-	default:
-		DBG(String(__FUNCTION__) + "::" + String(__LINE__) + "::" + "WARN knobID for Internal Not valid: " + String(knobID));
-		break;
-
-	}
-#endif //USE_INTERNAL_EFFECTS
+    if(!std::isfinite(value)) return;
+    switch(knobID%8)
+    {
+        case uint8_t(InternalAudioCC::RELEASE):
+            if(_trackSf) tsf_set_noteReleaseTimeMs(static_cast<tsf*>(_trackSf),int(std::clamp(value,0.0f,1000.0f)));
+            break;
+        case uint8_t(InternalAudioCC::FILTER_CUTOFF):
+            if(alternate) filter.setMode(value<=12?dsp::LadderFilter<float>::Mode::LPF12:dsp::LadderFilter<float>::Mode::LPF24);
+            else {filter.setEnabled(value>22);filter.setCutoffFrequencyHz(std::clamp(value,20.0f,20000.0f));}
+            break;
+        case uint8_t(InternalAudioCC::RESONANCE):filter.setResonance(std::clamp(value*0.01f,0.0f,1.0f));break;
+        case uint8_t(InternalAudioCC::VOLUME):
+            if(alternate)trackGain.setGainLinear(std::clamp(value*0.01f,0.0f,1.0f));
+            else _songManager->setMasterVolume(std::clamp(value*0.01f,0.0f,1.0f));
+            break;
+        case uint8_t(InternalAudioCC::REVERB):
+            if(alternate)theReverbParameters.dryLevel=std::clamp(value*0.01f,0.0f,1.0f);
+            else theReverbParameters.width=std::clamp(value*0.01f,0.0f,1.0f);
+            igniteReverb.setParameters(theReverbParameters);
+            break;
+        case uint8_t(InternalAudioCC::CHORUS):
+            if(alternate)_Chorus[0].setDepth(std::clamp(value*0.01f,0.0f,1.0f));
+            else {chorusStatus[0]=value>0;_Chorus[0].setRate(std::clamp(value,0.01f,99.0f));}
+            break;
+        case uint8_t(InternalAudioCC::EQ_HIGH):
+        case uint8_t(InternalAudioCC::EQ_LOW):
+        {
+            const auto index=knobID%8==uint8_t(InternalAudioCC::EQ_HIGH)?FILTER_HIGHEQ_INDEX:FILTER_LOWEQ_INDEX;
+            if(alternate)EQgainDb[index]=std::clamp(value,-12.0f,12.0f);
+            else EQcutoffFreq[index]=std::clamp(value,20.0f,20000.0f);
+            updateEq(index);break;
+        }
+        default:break;
+    }
+#endif
 }
 
 void Track::resetEffects(void)
@@ -2998,24 +2871,24 @@ void Track::reverbInit(void)
 
 void Track::chorusInit(void)
 {
-	_Chorus[0].prepare({ INTERNAL_AUDIO_SAMPLE_RATE, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 1 });
+	_Chorus[0].prepare({ INTERNAL_AUDIO_SAMPLE_RATE, INTERNAL_AUDIO_20MS_BLOCK_SIZE, audioChannels });
 	_Chorus[0].setRate(0.2f); // Set chorus rate
-	_Chorus[0].setDepth(0.0f); // Set chorus depth
+	_Chorus[0].setDepth(0.01f); // Set chorus depth
 	_Chorus[0].setMix(0.5f); // Set chorus Dry/wet Mix)
 }
 
 void Track::eqInit(void)
 {
-	eqFilter[FILTER_HIGHEQ_INDEX].prepare({ INTERNAL_AUDIO_SAMPLE_RATE, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 1 });
-	//0.001 as 0 is not allowed, this code only for init
-	eqFilter[FILTER_HIGHEQ_INDEX].coefficients = juce::dsp::IIR::Coefficients<float>::makeLowShelf(INTERNAL_AUDIO_SAMPLE_RATE, EQcutoffFreq[FILTER_HIGHEQ_INDEX], 1, EQcutoffGain[FILTER_HIGHEQ_INDEX]);
-	eqFilter[FILTER_LOWEQ_INDEX].prepare({ INTERNAL_AUDIO_SAMPLE_RATE, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 1 });
-	eqFilter[FILTER_LOWEQ_INDEX].coefficients = juce::dsp::IIR::Coefficients<float>::makeHighShelf(INTERNAL_AUDIO_SAMPLE_RATE, EQcutoffFreq[FILTER_LOWEQ_INDEX], 1, EQcutoffGain[FILTER_LOWEQ_INDEX]);
+    for(int index=0;index<EQFILTER_INDEX_MAX;++index)
+    {
+        eqFilter[index].prepare({INTERNAL_AUDIO_SAMPLE_RATE,INTERNAL_AUDIO_20MS_BLOCK_SIZE,audioChannels});
+        updateEq(index);
+    }
 }
 
 void Track::filterInit(void)
 {
-	filter.prepare({ INTERNAL_AUDIO_SAMPLE_RATE, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 1 });
+	filter.prepare({ INTERNAL_AUDIO_SAMPLE_RATE, INTERNAL_AUDIO_20MS_BLOCK_SIZE, audioChannels });
 	filter.setMode(dsp::LadderFilter<float>::Mode::LPF12);
 	filter.setCutoffFrequencyHz(filtercutoffFreq);
 	filter.setResonance(filterResonance);
@@ -3025,7 +2898,7 @@ void Track::filterInit(void)
 
 void Track::gainInit(void)
 {
-	trackGain.prepare({ INTERNAL_AUDIO_SAMPLE_RATE, INTERNAL_AUDIO_20MS_BLOCK_SIZE, 1 });
+	trackGain.prepare({ INTERNAL_AUDIO_SAMPLE_RATE, INTERNAL_AUDIO_20MS_BLOCK_SIZE, audioChannels });
 	trackGain.setGainLinear(0.7f);
 }
 
@@ -3850,12 +3723,13 @@ void Track::actionsAtBarBoundary(std::string patternName, int8_t previousTrackBa
 
 void Track::unloadDesktopSoundFont()
 {
-    tsf_close(static_cast<tsf*>(_trackSf));
-    _trackSf = nullptr;
+    tsf_close(static_cast<tsf*>(_trackSf));_trackSf=nullptr;
+    desktopFontSource.reset();desktopLoadedFontPath.clear();
+    std::fill_n(_twentyMsBuffer,INTERNAL_AUDIO_20MS_BLOCK_SIZE*audioChannels,0.0f);
 }
 void Track::prepareDesktopMonitor()
 {
-    if (_trackSf == nullptr)
+    if (_trackSf == nullptr || desktopLoadedFontPath!=_songManager->soundFontPathForInstrument(getTrackTxInstrument()))
     {
         resetEffects();
         effectsInit();

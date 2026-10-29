@@ -1,10 +1,10 @@
 ﻿# IGNITE Desktop Simulator
 
-**User manual · Community release v0.3.3-desktop.3 · 28 October 2026**
+**User manual · Community release v0.3.3-desktop.4 · 28 October 2026**
 
 IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with compact and hardware layouts, plus desktop audio, MIDI, SoundFont and backup controls. Both layouts run the actual firmware touchscreen and the same panel controls.
 
-This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.3` identifies this community release.
+This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.4` identifies this community release.
 
 ![IGNITE simulator compact layout with a large live touchscreen](../images/ignite-compact.png)
 
@@ -27,7 +27,7 @@ This is an independent community build of Music Tribe's open-source release. It 
 
 ## 1. Install and launch
 
-Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.3). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
+Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.4). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
 
 The package is portable and does not require an installer, Visual Studio or a Python installation to run. Development tools are needed only to rebuild it. A working Windows audio output is required to hear internal sound. Supply your own `.sf2` SoundFont; sample banks are not included.
 
@@ -57,6 +57,8 @@ Most panel buttons depend on the current screen and selected object. Start with 
 | Jog / Enter | Drag vertically or scroll to navigate; click to select. |
 | SHIFT | Click to toggle the firmware Shift state; click again to release it. |
 | Return, Copy, − and + | Send the corresponding firmware navigation/edit action. |
+
+EQ High and EQ Low control the matching high/low shelf. Alternate gain is **-12 to +12 dB**; **0 dB** bypasses that band. Older nonzero saved EQ gains are now interpreted as dB, so review saved EQ settings after upgrading. Release time is independent per synth, with 0 using the preset release. Reverb applies width/dry controls immediately, chorus processes both channels, and stereo filter/EQ histories remain independent.
 
 | Keyboard | Action |
 |---|---|
@@ -96,11 +98,11 @@ Patterns and instruments can be reused. Editing a reused library object may affe
 
 This walkthrough uses internal audio and does not require a MIDI controller. The underlying create/edit/save/play workflow is covered by model tests; the test harness does not click every control in these screens.
 
-1. **Load a bank.** Open Desktop Settings → SoundFonts → **Load SoundFont...** and select an SF2. A complete GM bank makes the original firmware preset names useful; a single-instrument bank also works with the desktop browser.
+1. **Choose a default bank.** Open Desktop Settings → SoundFonts → **Browse SF2...** and select an SF2, then press **Set as default SF2**. A complete GM bank makes the original firmware preset names useful; a single-instrument bank also works with the desktop browser.
 2. **Create a song.** Press SONG / F2. Use the empty-list creation control or **+ Add New Song**, then select the new song.
 3. **Create a scene.** Press SCENE / F3. Use the scene creation control or **+ Add New Scene**, then select it. Tracks belong to this scene.
 4. **Create an instrument.** Open MENU / F1 → Instrument and use its creation control. Note the instrument's name.
-5. **Choose its sound.** Return to Desktop Settings → SoundFonts. Select a preset, select that instrument in the lower selector, and press **Assign to instrument**. This enables internal sound and saves the instrument selection.
+5. **Choose its sound.** Return to Desktop Settings → SoundFonts. Select that instrument in the lower selector first, browse a different SF2 if desired, select a preset, and press **Assign SF2 + preset**. This enables internal sound and saves the instrument selection.
 6. **Create a pattern.** Open PATTERN / F5 and use its creation control or **+ Add New Pattern**. Choose a polyphonic pattern if you want chords; a monophonic pattern is sufficient for a simple melody.
 7. **Connect the track.** Open TRACK / F4, select a track, and assign your pattern and output instrument. Ensure the track is not muted. A receive instrument is needed for MIDI recording, but not for entering notes with the mouse.
 8. **Enter a few notes.** Open the assigned pattern. Use its step/event editor or grid tools to add notes, with nonzero velocity and duration, and enable the relevant steps. For a short test, use a one-bar sixteenth-note pattern and put notes on positions 1, 5, 9 and 13.
@@ -144,22 +146,24 @@ Knobs A–H have the front-panel labels **Release, Cutoff, Resonance, Volume, Re
 
 ![SoundFont browser showing a generated bank 42, program 7 test preset](../images/desktop-soundfonts.png)
 
-Use **Load SoundFont...** to choose an existing SF2. The Windows build can load it directly from your sample collection, including Unicode paths. Loading replaces the **one shared bank used by every internal instrument** and stops playback. It does not give each track a separate SF2 file.
+Use **Browse SF2...** to open a bank from your sample collection, including Unicode paths. Browsing and previewing do not change instrument assignments. Different instruments can use different SF2 files simultaneously. Tracks sharing a bank share its sample memory and keep their own voices, MIDI controllers and effects.
 
 The preset list shows **bank:program** followed by the preset name. Both numbers start at zero. Search by name or number. This lists the actual presets in the loaded file, so banks with custom numbering are usable without remapping their samples.
 
 Select a row and press **Preview C4**, or double-click the row, to hear a short note while stopped. Preview does not require a track assignment. A drum preset may have no sample on that particular note; silence on C4 alone does not establish that the bank is invalid.
 
-To use the preset in a sequence, choose an existing instrument below the list and press **Assign to instrument**. The assignment is saved with the instrument. Assign that instrument to the track's output. The original firmware GM picker remains available for conventional bank-0 programs and its mapped bank-128 drum sets.
+To choose a sound for a sequence, select an existing instrument below the list first, browse the desired SF2, select a preset, then press **Assign SF2 + preset**. Ignite saves the file path and preset with that instrument and stops playback for the change. Assign the instrument to the track's output. The **Assigned** line shows its bank.
 
-The chosen bank path is remembered in the Windows preferences. Custom bank/program assignments survive saved arrangements and backups, but the SF2 itself remains external. Moving or deleting that file can silence internal playback. A replacement bank with different presets may require new assignments.
+**Set as default SF2** saves the browsed bank as the startup default. Explicit instrument assignments retain their own banks. **Use default SF2** clears the selected instrument's explicit path; it keeps a matching preset where available, otherwise selects the first preset in the default bank. The original firmware GM picker remains available for conventional GM banks.
+
+The default bank path is remembered in Windows preferences. Explicit instrument paths and bank/program assignments survive saved arrangements and project backups; SF2 samples remain external. If an assigned file is missing, that instrument stays silent while instruments with available banks continue playing. Browse an available file and reassign its preset to repair the path. A missing default bank does not prevent explicit instrument banks from playing.
 
 | Engine property | Current behavior |
 |---|---|
 | Bank format | SF2. SF3 support is not established. |
-| Shared bank | One loaded file, with independent per-track synth state. |
-| Voices | Eight allocated per track; layered presets may consume several voices per note. |
-| Synthesis | Mono, 48 kHz. Output is resampled to the Windows device rate. |
+| Bank assignment | One default SF2 plus optional per-instrument SF2 paths; sample data is cached and shared by path. |
+| Voices | 32 per track by default. Choose 8, 16, 32, 64 or 128 in the SoundFonts tab. Layered/stereo presets can consume several voices per note. The setting applies to every track and changing it stops playback. |
+| Synthesis | Stereo, 48 kHz, including MIDI pan and stereo effects. Resampled to the Windows device rate; a mono device receives a downmix. |
 | Missing preset | Silent instead of reusing a previous valid preset. |
 | Failed replacement load | Retains the previously loaded bank. |
 
@@ -280,7 +284,7 @@ For a file log, set `IGNITE_LOG` to a writable path before launch. Source-checko
 | Incomplete device distribution | MCU firmware, Wi-Fi firmware and the proprietary PC transfer service were omitted upstream. A complete flashable image is not supplied. |
 | Known desktop limitation | Debug retains UI allocations and reports them slowly at exit. The shared model lock can cause brief audio gaps during edits/saves. |
 
-The synth is mono and voice-limited. This simulator is not an emulation of the MCU, electrical I/O or device storage hardware. The optional VST source is a template, not an Ignite plugin supplied by this release.
+The synth has a configurable voice limit; complete SoundFont modulator-matrix support is still incomplete. This simulator is not an emulation of the MCU, electrical I/O or device storage hardware. The optional VST source is a template, not an Ignite plugin supplied by this release.
 
 ## 14. Developer and release reference
 
@@ -297,10 +301,11 @@ See [Windows build instructions](../BUILD_WINDOWS.md) for Visual Studio, CMake, 
 ```powershell
 .\scripts\features-windows.ps1 -Configuration Release
 .\scripts\correctness-windows.ps1 -Configuration Release
+.\scripts\sound-windows.ps1 -Configuration Release
 .\scripts\workflow-windows.ps1 -Configuration Release -NodeEdit -AudioDevice -SimulateInterruptedSave
 ```
 
-Tests use disposable directories under the ignored build tree. The release was checked with **82 native Release/ASan checks**, **83 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **61 layout checks**, **91 no-font workflow checks under ASan**, **seven smoke checks per font/no-font case**, and **five packet-protocol checks**. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
+Tests use disposable directories under the ignored build tree. The release was checked with **84 native Release/ASan checks**, **85 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **61 layout checks**, **99 stereo/effects/multi-bank checks**, **91 no-font workflow checks under ASan**, **seven smoke checks per font/no-font case**, and **five packet-protocol checks**. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
 
 The separate AudIO, DAW and Airwindows libraries also build, but the main app uses its firmware TinySoundFont path. Detailed evidence and remaining audit items are in [AUDIT_FIXES.md](../AUDIT_FIXES.md), [CAPABILITIES.md](../CAPABILITIES.md) and [DEVELOPMENT.md](../DEVELOPMENT.md).
 

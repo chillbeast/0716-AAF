@@ -13,7 +13,7 @@ def name(text):
     return text.encode('ascii').ljust(20, b'\0')
 
 
-def make_font(bank=0, program=0, presets=None):
+def make_font(bank=0, program=0, presets=None, stereo=False):
     rate = 22050
     count = rate
     pcm = [int(16000 * math.sin(2 * math.pi * 220 * i / rate)) for i in range(count)] + [0] * 46
@@ -26,18 +26,26 @@ def make_font(bank=0, program=0, presets=None):
     phdr += struct.pack('<20sHHHIII', name('EOP'), 0, 0, len(specs), 0, 0, 0)
     pbag = b''.join(struct.pack('<HH', i * 2, 0) for i in range(len(specs) + 1))
     pgen = b''.join(struct.pack('<HHHH', 51, shift & 0xffff, 41, 0) for b, p, shift in specs) + bytes(4)
-    inst = struct.pack('<20sH', name('Test sine'), 0) + struct.pack('<20sH', name('EOI'), 1)
+    inst = struct.pack('<20sH', name('Test sine'), 0) + struct.pack('<20sH', name('EOI'), 2 if stereo else 1)
     shdr = struct.pack('<20sIIIIIBbHH', name('Sine A3'), 0, count, 0, count, rate, 57, 0, 0, 1)
     shdr += struct.pack('<20sIIIIIBbHH', name('EOS'), count, count, count, count, rate, 0, 0, 0, 1)
+    igen = struct.pack('<HHHHHHHH', 54, 1, 38, (-1200) & 0xffff, 53, 0, 0, 0)
+    ibag = struct.pack('<HHHH', 0, 0, 3, 0)
+    if stereo:
+        # Two independently panned regions with different pitches reveal any
+        # channel copying or effect-state sharing in the stereo signal path.
+        igen = b''.join(struct.pack('<HHHHHHHHHH', 17, pan & 0xffff, 51, shift, 54, 1, 38, (-1200) & 0xffff, 53, 0)
+                        for pan, shift in [(-500, 0), (500, 12)]) + bytes(4)
+        ibag = struct.pack('<HHHHHH', 0, 0, 5, 0, 10, 0)
     pdta = chunk(b'LIST', b'pdta'
                  + chunk(b'phdr', phdr)
                  + chunk(b'pbag', pbag)
                  + chunk(b'pmod', bytes(10))
                  + chunk(b'pgen', pgen)
                  + chunk(b'inst', inst)
-                 + chunk(b'ibag', struct.pack('<HHHH', 0, 0, 3, 0))
+                 + chunk(b'ibag', ibag)
                  + chunk(b'imod', bytes(10))
-                 + chunk(b'igen', struct.pack('<HHHHHHHH', 54, 1, 38, (-1200) & 0xffff, 53, 0, 0, 0))
+                 + chunk(b'igen', igen)
                  + chunk(b'shdr', shdr))
     return chunk(b'RIFF', b'sfbk' + info + sdta + pdta)
 
@@ -45,7 +53,11 @@ def make_font(bank=0, program=0, presets=None):
 if __name__ == '__main__':
     target = Path(sys.argv[1])
     target.parent.mkdir(parents=True, exist_ok=True)
-    if len(sys.argv) > 2 and sys.argv[2] == '--midi':
+    if len(sys.argv) > 2 and sys.argv[2] == '--stereo':
+        target.write_bytes(make_font(stereo=True))
+    elif len(sys.argv) > 2 and sys.argv[2] == '--alternate':
+        target.write_bytes(make_font(presets=[(0, 0, 12)]))
+    elif len(sys.argv) > 2 and sys.argv[2] == '--midi':
         target.write_bytes(make_font(presets=[(0, 0, 0), (0, 1, 12), (42, 7, -12), (129, 5, 7)]))
     else:
         target.write_bytes(make_font(int(sys.argv[2]) if len(sys.argv) > 2 else 0, int(sys.argv[3]) if len(sys.argv) > 3 else 0))

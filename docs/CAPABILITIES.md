@@ -27,10 +27,10 @@ The running application uses a modified **TinySoundFont** implementation in `mod
 | Property | Current source behavior |
 |---|---|
 | Bank format | SoundFont 2 (`.sf2`), loaded from a file. SF3 support is not established. |
-| Voice limit | Eight synth voices allocated per track; a shared font supplies separate track synth state. This is a voice allocation limit, not a tested guarantee of 512 simultaneous notes. Layered presets can consume more than one voice per note. |
-| Audio format | Mono synthesis at 48 kHz, 32-bit float; the desktop stream is resampled to the negotiated device rate and copied to active output channels. Stereo sample content is rendered through a mono path. |
+| Voice limit | Windows default: 32 voices per track, configurable to 8/16/32/64/128. Presets can use multiple voices per note; maximum aggregate polyphony is not a real-time performance guarantee. |
+| Audio format | Windows stereo synthesis/effects at 48 kHz, 32-bit float, resampled to the device rate. Stereo channel histories remain independent; mono output uses a downmix. |
 | Render quantum | 960 samples / 20 ms. The desktop adapter preserves samples across arbitrary driver buffer sizes. |
-| Program selection | Original GM programs plus a desktop browser enumerating actual preset names, banks and programs, with preview and saved custom assignments. One shared SF2 supplies all internal instruments. |
+| Program selection | Original GM programs plus a desktop browser enumerating actual preset names, banks and programs, with preview and saved custom assignments. A default SF2 and per-instrument SF2 assignments coexist, with sample data shared by path. |
 | Controls | Release, cutoff, resonance, volume, reverb, chorus, EQ high and EQ low; alternate functions and track-value transforms are present. |
 | Effects | JUCE reverb, chorus, EQ/filter/gain processing in `Track`; five effect-order slots. The much larger Airwindows collection in AudIO is not automatically available in the IGNITE UI. |
 | Missing bank | This branch disables internal sound safely; the public baseline dereferenced failed font loads. |
@@ -60,4 +60,6 @@ The local library scan found **1,094 SF2 files**. `CT4MGM.SF2` has **329 presets
 
 Source paths above are relative to [`Source/Application/modules`](../Source/Application/modules).
 
-The desktop.3 pass adds MIDI controller support, checked settings saves and a close prompt, step insertion, and editor/performance regressions. See [AUDIT_FIXES.md](AUDIT_FIXES.md) for the specific fixes and verified limits. MIDI file import/export, song WAV export, multiple concurrent SF2 files and a functional Ignite VST remain future work.
+The desktop.3 pass adds MIDI controller support, checked settings saves and a close prompt, step insertion, and editor/performance regressions. See [AUDIT_FIXES.md](AUDIT_FIXES.md) for the specific fixes and verified limits. MIDI file import/export, song WAV export, a functional Ignite VST remain future work.
+
+Desktop.4 adds stereo/effects, configurable polyphony and persistent per-instrument SF2 assignments. MIDI file import/export, WAV/stem bounce and complete SoundFont modulator compatibility remain future work.

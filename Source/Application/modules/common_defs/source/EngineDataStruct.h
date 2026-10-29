@@ -129,6 +129,7 @@ namespace Ignite
 		TrackMixer tm;
 		int32_t id =0 ;
 		PgmChangeParams pgmChangeData;
+        std::string soundFontPath; // Empty uses the desktop default bank.
 	};
 
 	class Pattern;

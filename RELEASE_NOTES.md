@@ -1,3 +1,17 @@
+# IGNITE Desktop v0.3.3-desktop.4
+
+Stereo sound, configurable voice limits and separate SoundFonts for each instrument.
+
+- Windows synthesis, mixing, effects, resampling and output preserve stereo. MIDI pan is audible; mono devices receive a downmix.
+- Choose 8/16/32/64/128 voices per track in SoundFonts, default 32. Layered presets can consume several voices per note. Changing the limit stops playback.
+- Browse/preview without replacing assignments. Assign an SF2 and preset to each instrument or use the default bank. Paths/programs survive backup/restore and a fresh launch. Missing files silence affected instruments; samples remain external.
+- Corrected high/low EQ shelves and effect ordering, stereo filter histories, chorus bounds, reverb updates and per-synth release timing. EQ gain now uses -12 to +12 dB with zero bypass; review older nonzero saved EQ gains after upgrading.
+- Updated manual and synthetic audio tests for stereo, polyphony, effects, simultaneous banks, preview, undo, save/restore and missing-bank behavior.
+
+Release/Debug builds pass. Verification includes 84 native Release/ASan checks (85 Debug), 99 stereo/effects/multi-bank checks, 107 MIDI/save/editor, 75 desktop feature, 61 layout, 107 device/recovery workflow and 14 font/no-font smoke checks. The sound, correctness, feature, layout and workflow suites also pass under AddressSanitizer; a further 91-check missing-font workflow passes there. Counts include repeated setup. Final sanitizer runs produce no address-error report.
+
+Download **Ignite-Desktop-v0.3.3-desktop.4-windows-x64.zip**, extract it and run **Ignite.exe**. The package includes the manual and corresponding source. Supply your own SF2 files. This remains a community preview: physical MIDI/CV/clock qualification, complete SF2 modulators, MIDI file interchange, WAV/stem export and an Ignite VST remain outstanding.
+
 # IGNITE Desktop v0.3.3-desktop.3
 
 MIDI controller handling, protection for unsaved changes and editor/performance corrections.

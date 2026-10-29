@@ -1552,6 +1552,7 @@ FileHandlerError EngineFileHandler::saveInstrument(std::string InstrumentName, I
 	DataInfo->setAttribute("midiChannel", instrumentData.midiChannel);
 	DataInfo->setAttribute("defaultNote", instrumentData.defaultNote);
 	DataInfo->setAttribute("internalSoundPgm", instrumentData.internalSoundPgm);
+    DataInfo->setAttribute("soundFontPath",juce::String::fromUTF8(instrumentData.soundFontPath.c_str()));
 	DataInfo->setAttribute("internalSound", instrumentData.internalSound);
 	DataInfo->setAttribute("multiTimbralStatus", instrumentData.multiTimbralStatus);
 	DataInfo->setAttribute("polySpreadStatus", instrumentData.polySpreadStatus);
@@ -1654,6 +1655,7 @@ InstrumentData EngineFileHandler::GetInstrumentData(std::string InstrumentName)
 				instrumentData.midiChannel = (int8_t)e->getIntAttribute("midiChannel");
 				instrumentData.defaultNote = (uint8_t)e->getIntAttribute("defaultNote");
 				instrumentData.internalSoundPgm = e->getIntAttribute("internalSoundPgm");
+                instrumentData.soundFontPath=e->getStringAttribute("soundFontPath").toStdString();
 				instrumentData.internalSound = e->getBoolAttribute("internalSound");
 				instrumentData.multiTimbralStatus = e->getBoolAttribute("multiTimbralStatus");
 				instrumentData.polySpreadStatus = e->getBoolAttribute("polySpreadStatus");

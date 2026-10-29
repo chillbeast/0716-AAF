@@ -350,7 +350,7 @@ namespace Ignite
 		void checkAndHandlePatternLengthChange(void);
 		void publishInfoToUI(void);
 
-		int getTsfPresetFromIgniteIndex(int index);
+		static int getTsfPresetFromIgniteIndex(int index);
 
 		bool isSceneBarChange(int16_t sceneBarId);
 		bool isGBarSyncOn(int16_t barId);
@@ -419,8 +419,16 @@ namespace Ignite
 		std::unordered_map <uint8_t, uint8_t> _playingNoteList;
 
 		void* _trackSf = nullptr;
+        std::shared_ptr<void> desktopFontSource;
+        std::string desktopLoadedFontPath;
+        void useDesktopSoundFont(std::shared_ptr<void> font);
 		bool desktopPresetValid = true;
-		AudioDataType _twentyMsBuffer[INTERNAL_AUDIO_20MS_BLOCK_SIZE] = { 0 };
+#ifdef _WIN32
+        static constexpr int audioChannels = 2;
+#else
+        static constexpr int audioChannels = 1;
+#endif
+		AudioDataType _twentyMsBuffer[INTERNAL_AUDIO_20MS_BLOCK_SIZE * audioChannels] = { 0 };
 		juce::AudioBuffer<float> audioBuff;
 
 		//Effects - InternalAudio
@@ -430,9 +438,12 @@ namespace Ignite
 		juce::dsp::Chorus<float> _Chorus[1];//TODO: Array can be mapped to Tracks
 		bool chorusStatus[1] = { false };//To be applied?
 
-		juce::dsp::IIR::Filter<float> eqFilter[EQFILTER_INDEX_MAX];
+		juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,juce::dsp::IIR::Coefficients<float>> eqFilter[EQFILTER_INDEX_MAX];
 		float EQcutoffFreq[EQFILTER_INDEX_MAX] = { 20.0f, 20000.0f };
-		float EQcutoffGain[EQFILTER_INDEX_MAX] = { 0.0001f, 0.0001f };
+		float EQcutoffGain[EQFILTER_INDEX_MAX] = { 1.0f, 1.0f };
+        float EQgainDb[EQFILTER_INDEX_MAX] = { 0.0f, 0.0f };
+        void updateEq(int index);
+        void processInternalEffects();
 		bool EQisEnabled[EQFILTER_INDEX_MAX] = { false, false };
 		juce::dsp::LadderFilter<float> filter;
 		float filtercutoffFreq = 20000.0f;

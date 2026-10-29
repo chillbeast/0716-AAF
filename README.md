@@ -10,7 +10,7 @@ Extract the Windows package and run `Ignite.exe`, then choose your own SF2 in **
 
 > **Local desktop-build branch:** Windows build and interactive hardware simulator bring-up are documented in [Build and run](docs/BUILD_WINDOWS.md), [capability map](docs/CAPABILITIES.md), [simulator guide](docs/manual/USER_MANUAL.md), and [development handoff](docs/DEVELOPMENT.md). This is a community development build, not an official firmware release.
 
-The Windows simulator starts with a large touchscreen in **Compact** layout; the toolbar switches to the vector **Hardware** faceplate and remembers your choice. Both layouts use the same controls and live firmware screen. It also includes audio/device settings, MIDI routing, a bank-aware SoundFont browser with preview, step/live MIDI recording repairs and project backup ZIP export/restore. See [desktop features](docs/DESKTOP_FEATURES.md). Build and verify with `scripts/build-windows.ps1 -DebugBuild -Package`.
+The Windows simulator starts with a large touchscreen in **Compact** layout; the toolbar switches to the vector **Hardware** faceplate and remembers your choice. Both layouts use the same controls and live firmware screen. It also includes audio/device settings, MIDI routing, stereo synthesis/effects, configurable polyphony, a SoundFont browser with preview and per-instrument banks, step/live MIDI recording repairs and project backup ZIP export/restore. See [desktop features](docs/DESKTOP_FEATURES.md). Build and verify with `scripts/build-windows.ps1 -DebugBuild -Package`.
 
 ![IGNITE compact simulator layout](docs/images/ignite-compact.png)
 

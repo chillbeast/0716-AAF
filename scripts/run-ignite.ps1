@@ -6,6 +6,7 @@ param(
     [ValidateSet('Hardware','Compact')][string]$Layout
 )
 $ErrorActionPreference = 'Stop'
+$explicitSoundFont = [bool]$SoundFont
 $repo = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $repo 'Source\Application\build\win'
 $exe = Join-Path $build "apps\ignite\Ignite_artefacts\$Configuration\Ignite.exe"
@@ -19,11 +20,13 @@ $settingsPath = Join-Path $repo 'Source\Application\build\desktop-settings.json'
 if (!$SoundFont -and (Test-Path -LiteralPath $settingsPath)) {
     $SoundFont = (Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json).SoundFont
 }
-if ($SoundFont -and !(Test-Path -LiteralPath $SoundFont -PathType Leaf)) { throw "SoundFont does not exist: $SoundFont" }
+if ($explicitSoundFont -and !(Test-Path -LiteralPath $SoundFont -PathType Leaf)) { throw "SoundFont does not exist: $SoundFont" }
 $previous = @{}
 foreach ($name in @('IGNITE_SOUNDFONT', 'IGNITE_DATA_DIR', 'IGNITE_LOG')) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 try {
-    if ($SoundFont) { $env:IGNITE_SOUNDFONT = (Resolve-Path -LiteralPath $SoundFont).Path }
+    if ($SoundFont) {
+        $env:IGNITE_SOUNDFONT = if (Test-Path -LiteralPath $SoundFont -PathType Leaf) { (Resolve-Path -LiteralPath $SoundFont).Path } else { [IO.Path]::GetFullPath($SoundFont) }
+    }
     if ($DataDirectory) {
         New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
         $env:IGNITE_DATA_DIR = (Resolve-Path -LiteralPath $DataDirectory).Path

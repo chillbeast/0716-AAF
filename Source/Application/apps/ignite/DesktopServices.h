@@ -217,36 +217,96 @@ namespace IgniteDesktop
     public:
         explicit SoundFontSettings(Ignite::IgniteEngine& e) : engine(e), list("Presets",this)
         {
-            for (auto* child : std::initializer_list<juce::Component*>{&bank,&load,&search,&list,&instruments,&assign,&preview,&status}) addAndMakeVisible(child);
-            load.onClick = [this] { chooseBank(); };
+            for (auto* child : std::initializer_list<juce::Component*>{&bank,&load,&makeDefault,&search,&list,&instruments,&assign,&useDefault,&preview,&voiceLabel,&voices,&assignment,&status}) addAndMakeVisible(child);
+            load.onClick=[this]{chooseBank();};
+            makeDefault.onClick=[this]
+            {
+                stopPreview();std::string error;
+                const auto path=engine.songManager->desktopBrowserFontPath;
+                if(!engine.songManager->loadDesktopSoundFont(path,error)){status.setText(juce::String(error),juce::dontSendNotification);return;}
+                auto prefs=readPreferences();prefs.getDynamicObject()->setProperty("SoundFont",juce::String::fromUTF8(path.c_str()));
+                const bool saved=writePreferences(prefs);refresh();
+                status.setText(saved?"Default bank saved. Instruments with their own SF2 keep their assignments.":"Default changed; saving the startup preference failed.",juce::dontSendNotification);
+            };
+            voiceLabel.setText("Voices per track",juce::dontSendNotification);
+            for(int count:{8,16,32,64,128})voices.addItem(juce::String(count),count);
+            voices.setSelectedId(engine.songManager->desktopVoiceLimit,juce::dontSendNotification);
+            voices.onChange=[this]
+            {
+                stopPreview();if(!engine.songManager->setDesktopVoiceLimit(voices.getSelectedId()))return;
+                auto prefs=readPreferences();prefs.getDynamicObject()->setProperty("SynthVoices",voices.getSelectedId());
+                status.setText(writePreferences(prefs)?"Voice limit saved. Playback stopped and sounding notes cleared.":"Voice limit changed; saving the preference failed.",juce::dontSendNotification);
+            };
+            voices.setTooltip("Applies to every track. Changing the limit stops playback and sounding notes.");
+            instruments.onChange=[this]
+            {
+                updateAssignment();auto* instrument=selectedInstrument();if(!instrument)return;
+                stopPreview();std::string error;const auto path=engine.songManager->soundFontPathForInstrument(instrument);
+                if(engine.songManager->browseDesktopSoundFont(path,error))refreshPresets();
+                else status.setText(juce::String(error)+" Choose an available SF2 to repair the assignment.",juce::dontSendNotification);
+            };
+            useDefault.onClick=[this]
+            {
+                auto* instrument=selectedInstrument();if(!instrument)return;
+                stopPreview();std::string error;
+                if(!engine.songManager->browseDesktopSoundFont(engine.songManager->desktopSoundFontPath,error))
+                {status.setText(juce::String(error),juce::dontSendNotification);return;}
+                auto choices=engine.songManager->getDesktopSoundFontPresets();
+                if(choices.empty())return;
+                const auto program=instrument->getInternalSoundPgm();
+                auto found=std::find_if(choices.begin(),choices.end(),[&](const auto& p){return Ignite::SoundFontProgram::encode(p.bank,p.program)==program || (p.bank==0 && p.program==program);});
+                if(found==choices.end())found=choices.begin();
+                const auto preset=Ignite::SoundFontProgram::encode(found->bank,found->program);
+                const bool saved=engine.songManager->assignDesktopSoundFont(instrument->getName(),"",preset,error);
+                refreshPresets();updateAssignment();
+                status.setText(saved?"Using default SF2: "+juce::String(found->name):juce::String(error),juce::dontSendNotification);
+            };
             search.setTextToShowWhenEmpty("Search preset name, bank or program",juce::Colours::grey);
             search.onTextChange = [this] { filter(); };
             assign.onClick = [this] { assignPreset(); };
             preview.onClick = [this] { previewPreset(); };
-            refresh(); setSize(720,580);
+            refresh();instruments.onChange();setSize(720,580);
         }
         ~SoundFontSettings() override { stopPreview(); }
         void resized() override
         {
-            bank.setBounds(12,8,getWidth()-180,42); load.setBounds(getWidth()-160,14,146,28);
-            search.setBounds(12,56,getWidth()-180,28); preview.setBounds(getWidth()-158,56,144,28); list.setBounds(12,94,getWidth()-24,getHeight()-204);
-            instruments.setBounds(12,getHeight()-100,getWidth()-220,30); assign.setBounds(getWidth()-198,getHeight()-100,184,30);
-            status.setBounds(12,getHeight()-60,getWidth()-24,50);
+            bank.setBounds(12,8,getWidth()-340,42);load.setBounds(getWidth()-320,14,146,28);makeDefault.setBounds(getWidth()-164,14,150,28);
+            search.setBounds(12,56,getWidth()-180,28);preview.setBounds(getWidth()-158,56,144,28);
+            list.setBounds(12,94,getWidth()-24,getHeight()-254);
+            voiceLabel.setBounds(12,getHeight()-152,130,28);voices.setBounds(145,getHeight()-152,90,28);
+            instruments.setBounds(12,getHeight()-116,getWidth()-350,30);assign.setBounds(getWidth()-330,getHeight()-116,158,30);useDefault.setBounds(getWidth()-162,getHeight()-116,148,30);
+            assignment.setBounds(12,getHeight()-82,getWidth()-24,25);status.setBounds(12,getHeight()-54,getWidth()-24,48);
         }
         void refresh()
         {
-            presets = engine.songManager->getDesktopSoundFontPresets();
-            bank.setText(juce::String::fromUTF8(engine.songManager->desktopSoundFontPath.c_str()),juce::dontSendNotification);
-            instruments.clear(juce::dontSendNotification); instrumentNames.clear();
-            auto lock = engine.lockDesktopState();
-            for (auto& instrument : engine.instrumentManager->instrumentList)
+            const auto selected=instrumentNames[instruments.getSelectedId()-1];
+            instruments.clear(juce::dontSendNotification);instrumentNames.clear();
+            auto lock=engine.lockDesktopState();
+            for(auto& instrument:engine.instrumentManager->instrumentList)
             {
-                instrumentNames.add(instrument.getName()); instruments.addItem(instrument.getDispName(),instrumentNames.size());
+                instrumentNames.add(instrument.getName());instruments.addItem(instrument.getDispName(),instrumentNames.size());
             }
-            if (!instrumentNames.isEmpty()) instruments.setSelectedId(1,juce::dontSendNotification);
-            instruments.setTextWhenNothingSelected("Create an instrument in the firmware UI first"); filter();
+            if(!instrumentNames.isEmpty())instruments.setSelectedId(std::max(0,instrumentNames.indexOf(selected))+1,juce::dontSendNotification);
+            instruments.setTextWhenNothingSelected("Create an instrument in the firmware UI first");
+            updateAssignment();refreshPresets();
         }
     private:
+        Ignite::Instrument* selectedInstrument()
+        {
+            const int index=instruments.getSelectedId()-1;
+            return juce::isPositiveAndBelow(index,instrumentNames.size())?engine.instrumentManager->getInstrument(instrumentNames[index].toStdString()):nullptr;
+        }
+        void updateAssignment()
+        {
+            auto* instrument=selectedInstrument();
+            const auto text=instrument?(instrument->_instrumentData->soundFontPath.empty()?"Assigned: default SF2 ("+juce::String::fromUTF8(engine.songManager->desktopSoundFontPath.c_str())+")":"Assigned: "+juce::String::fromUTF8(instrument->_instrumentData->soundFontPath.c_str())):"Select an instrument to assign this bank and preset.";
+            assignment.setText(text,juce::dontSendNotification);assignment.setTooltip(text);
+        }
+        void refreshPresets()
+        {
+            presets=engine.songManager->getDesktopSoundFontPresets();
+            bank.setText(juce::String::fromUTF8(engine.songManager->desktopBrowserFontPath.c_str()),juce::dontSendNotification);filter();
+        }
         int getNumRows() override { return int(filtered.size()); }
         void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool selected) override
         {
@@ -296,7 +356,7 @@ namespace IgniteDesktop
                 if ((juce::String(p.name)+" "+juce::String(p.bank)+":"+juce::String(p.program)).containsIgnoreCase(query)) filtered.push_back(i);
             }
             list.updateContent(); list.deselectAllRows();
-            status.setText(juce::String(int(filtered.size()))+" presets. This bank applies to all internal instruments; loading stops playback.",juce::dontSendNotification);
+            status.setText(juce::String(int(filtered.size()))+" presets. Assign an SF2 and preset to the selected instrument.",juce::dontSendNotification);
         }
         void chooseBank()
         {
@@ -307,11 +367,9 @@ namespace IgniteDesktop
             {
                 if (!safe || !choice.getResult().existsAsFile()) return;
                 std::string error;
-                if (safe->engine.songManager->loadDesktopSoundFont(choice.getResult().getFullPathName().toStdString(),error))
+                if (safe->engine.songManager->browseDesktopSoundFont(choice.getResult().getFullPathName().toStdString(),error))
                 {
-                    auto preferences=readPreferences(); preferences.getDynamicObject()->setProperty("SoundFont",choice.getResult().getFullPathName());
-                    const bool saved=writePreferences(preferences); safe->refresh();
-                    if (!saved) safe->status.setText("Bank loaded; could not save the startup preference.",juce::dontSendNotification);
+                    safe->refreshPresets();
                 }
                 else safe->status.setText(juce::String(error)+" Previous bank retained.",juce::dontSendNotification);
             });
@@ -321,19 +379,18 @@ namespace IgniteDesktop
             const int row=list.getSelectedRow(), instrumentIndex=instruments.getSelectedId()-1;
             if (!juce::isPositiveAndBelow(row,filtered.size()) || !juce::isPositiveAndBelow(instrumentIndex,instrumentNames.size())) return;
             const auto& preset=presets[size_t(filtered[size_t(row)])]; const auto name=instrumentNames[instrumentIndex].toStdString();
-            using namespace Ignite;
-            engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleInstrument),paramId_t(InstrumentParam::paramSetActiveInstrument),name);
-            engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleInstrument),paramId_t(InstrumentParam::paramInternalSound),true);
-            engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleInstrument),paramId_t(InstrumentParam::paramInternalSoundPgm),SoundFontProgram::encode(preset.bank,preset.program));
-            engine.instrumentManager->SaveInstrument(name);
-            status.setText("Assigned and saved: "+juce::String(preset.name),juce::dontSendNotification);
+            std::string error;
+            const bool saved=engine.songManager->assignDesktopSoundFont(name,engine.songManager->desktopBrowserFontPath,Ignite::SoundFontProgram::encode(preset.bank,preset.program),error);
+            updateAssignment();
+            status.setText(saved?"Assigned and saved: "+juce::String(preset.name):juce::String(error),juce::dontSendNotification);
         }
+
         Ignite::IgniteEngine& engine;
-        juce::Label bank,status;
-        juce::TextButton load{"Load SoundFont..."},assign{"Assign to instrument"},preview{"Preview C4"};
+        juce::Label bank,status,voiceLabel,assignment;
+        juce::TextButton load{"Browse SF2..."},makeDefault{"Set as default SF2"},assign{"Assign SF2 + preset"},useDefault{"Use default SF2"},preview{"Preview C4"};
         juce::TextEditor search;
         juce::ListBox list;
-        juce::ComboBox instruments;
+        juce::ComboBox instruments,voices;
         juce::StringArray instrumentNames;
         std::unique_ptr<juce::FileChooser> chooser;
         std::vector<Ignite::SongManager::SoundFontPreset> presets;

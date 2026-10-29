@@ -316,6 +316,9 @@ namespace Ignite
 
 		void clearSceneTimeBaseTick(void);
 		void renderTracksAndMix(AudioDataType* buffer);
+        void renderDesktopStereo(AudioDataType* planarBuffer);
+        bool setDesktopVoiceLimit(int voices);
+        int desktopVoiceLimit = 32;
 
 		void handleSyncIn(float frequencyHz);
 		float mapConfigPpqnToPpqn(int8_t configPpqn);
@@ -552,8 +555,15 @@ namespace Ignite
 		struct SoundFontPreset { int bank, program, index; std::string name; };
 		std::vector<SoundFontPreset> getDesktopSoundFontPresets();
 		bool loadDesktopSoundFont(const std::string& path, std::string& error);
-		std::string desktopPresetName(int program);
+        bool browseDesktopSoundFont(const std::string& path,std::string& error);
+        std::shared_ptr<void> acquireDesktopSoundFont(const std::string& path,std::string& error);
+        std::shared_ptr<void> soundFontForInstrument(Instrument* instrument,std::string& error);
+        std::string soundFontPathForInstrument(Instrument* instrument) const;
+        void desktopInstrumentFontChanged(const std::string& name);
+        bool assignDesktopSoundFont(const std::string& instrument,const std::string& path,int program,std::string& error);
+		std::string desktopPresetName(int program,const std::string& instrument = {});
 		std::string desktopSoundFontPath;
+        std::string desktopBrowserFontPath;
 		static juce::File desktopSettingsFile();
 		void receiveDesktopMidi(uint8_t port, const MidiMessage& message);
 		void desktopPanic();
@@ -568,9 +578,11 @@ namespace Ignite
 
 	private:
 		int soundFontProgramCount;
-		FixedAudioBlockAdapter<INTERNAL_AUDIO_20MS_BLOCK_SIZE> audioBlockAdapter;
-		juce::ResamplingAudioSource audioResampler{this, false, 1};
+		FixedAudioBlockAdapter<INTERNAL_AUDIO_20MS_BLOCK_SIZE,2> audioBlockAdapter;
+		juce::ResamplingAudioSource audioResampler{this, false, 2};
 		void* _songTSf = nullptr;
+        std::shared_ptr<void> desktopDefaultFont,desktopBrowserFont;
+        std::map<std::string,std::weak_ptr<void>> desktopFontCache;
 		void init_tsf();
 		static SongManager *instance;
 
