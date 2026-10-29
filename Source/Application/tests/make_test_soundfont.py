@@ -18,7 +18,7 @@ def make_font(bank=0, program=0, presets=None, stereo=False):
     count = rate
     pcm = [int(16000 * math.sin(2 * math.pi * 220 * i / rate)) for i in range(count)] + [0] * 46
     info = chunk(b'LIST', b'INFO' + chunk(b'ifil', struct.pack('<HH', 2, 1))
-                 + chunk(b'INAM', b'Ignite test tone\0') + chunk(b'ISFT', b'Ignite desktop tests\0'))
+                 + chunk(b'INAM', b'Ignite test tone\0\0') + chunk(b'ISFT', b'Ignite desktop tests\0\0'))
     sdta = chunk(b'LIST', b'sdta' + chunk(b'smpl', struct.pack(f'<{len(pcm)}h', *pcm)))
     specs = presets if presets is not None else [(bank, program, 0)]
     phdr = b''.join(struct.pack('<20sHHHIII', name('Test sine' if len(specs) == 1 else f'Tone {b}:{p}'), p, b, i, 0, 0, 0)

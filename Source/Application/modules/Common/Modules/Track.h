@@ -307,6 +307,7 @@ namespace Ignite
 		void clearTrackPlayStepId (void);
 
 		void sfInit(void);
+        int desktopActiveVoices() const;
 		void sfReset(void);
 		void sfLoad(void);
 		void sfNoteOn(uint8_t channel, uint8_t key, float velocity);

@@ -513,6 +513,7 @@ std::map <int8_t, std::string> gMidiPortNameList =
 	//{(int8_t)IGNITE_INTERNAL_CLK, IGNITE_INTERNAL_CLK_NAME},
 };
 #include "tsf.h"
+#include "SoundFontRuntime.h"
 #include "SoundFontProgram.h"
 /* init and load TSF and sound font and use the copy in all song,scene tracks */
 void SongManager::init_tsf()
@@ -694,6 +695,13 @@ void SongManager::shutdownDesktop()
     TrackPlayThread_6.stopThread();
     TrackPlayThread_7.stopThread();
 #endif
+    // Destroy native synths before this thread's runtime state goes away.
+    // Firmware managers are owned by process-lifetime globals.
+    if(activeSong)for(auto& scene:activeSong->_songData->sceneList)
+        for(auto& track:scene._sceneData->trackList)track.unloadDesktopSoundFont();
+    for(auto& track:AuditioningTrack)if(track)track->unloadDesktopSoundFont();
+    desktopBrowserFont.reset();desktopDefaultFont.reset();desktopFontCache.clear();
+    _songTSf=nullptr;
 #endif
 }
 
@@ -7220,10 +7228,12 @@ std::shared_ptr<void> SongManager::acquireDesktopSoundFont(const std::string& pa
     tsf_stream stream{};stream.data=&input;
     stream.read=[](void* data,void* out,unsigned int count)->int{return static_cast<juce::FileInputStream*>(data)->read(out,int(count));};
     stream.skip=[](void* data,unsigned int count)->int{auto& input=*static_cast<juce::FileInputStream*>(data);return input.setPosition(input.getPosition()+count)?1:0;};
-    auto* font=tsf_load(&stream);
-    if(!font || tsf_get_presetcount(font)==0){tsf_close(font);error="The file contains no usable SoundFont presets.";return {};}
+    auto* font=SF2::load(&stream,key);
+    if(!font || SF2::count(font)==0){SF2::closeBank(font);error="The file contains no usable SoundFont presets.";return {};}
+#if !IGNITE_FULL_SF2
     tsf_set_output(font,Track::audioChannels==2?TSF_STEREO_UNWEAVED:TSF_MONO,INTERNAL_AUDIO_SAMPLE_RATE,0);
-    auto result=std::shared_ptr<void>(font,[](void* data){tsf_close(static_cast<tsf*>(data));});
+#endif
+    auto result=std::shared_ptr<void>(font,[](void* data){SF2::closeBank(static_cast<SF2::Bank*>(data));});
     desktopFontCache[key]=result;error.clear();return result;
 }
 
@@ -7241,9 +7251,9 @@ std::shared_ptr<void> SongManager::soundFontForInstrument(Instrument* instrument
 std::vector<SongManager::SoundFontPreset> SongManager::getDesktopSoundFontPresets()
 {
     auto lock=engine.lockDesktopState();std::vector<SoundFontPreset> presets;
-    auto* font=static_cast<tsf*>((desktopBrowserFont?desktopBrowserFont:desktopDefaultFont).get());
-    if(font)for(int index=0;index<tsf_get_presetcount(font);++index)
-        presets.push_back({tsf_get_presetbank(font,index),tsf_get_presetnumber(font,index),index,tsf_get_presetname(font,index)});
+    auto* font=static_cast<SF2::Bank*>((desktopBrowserFont?desktopBrowserFont:desktopDefaultFont).get());
+    if(font)for(int index=0;index<SF2::count(font);++index)
+        presets.push_back({SF2::bankNumber(font,index),SF2::programNumber(font,index),index,SF2::name(font,index)});
     return presets;
 }
 
@@ -7251,8 +7261,8 @@ std::string SongManager::desktopPresetName(int value,const std::string& instrume
 {
     auto lock=engine.lockDesktopState();if(!SoundFontProgram::isCustom(value))return {};
     auto* instrument=engine.instrumentManager->getInstrument(instrumentName.empty()?engine.instrumentManager->desktopActiveName():instrumentName);
-    std::string error;auto handle=soundFontForInstrument(instrument,error);auto* font=static_cast<tsf*>(handle.get());
-    const auto* name=font?tsf_bank_get_presetname(font,SoundFontProgram::bank(value),SoundFontProgram::program(value)):nullptr;
+    std::string error;auto handle=soundFontForInstrument(instrument,error);auto* font=static_cast<SF2::Bank*>(handle.get());
+    const auto* name=font?SF2::presetName(font,SoundFontProgram::bank(value),SoundFontProgram::program(value)):nullptr;
     return name?name:"Preset unavailable in assigned bank";
 }
 
@@ -7278,7 +7288,7 @@ bool SongManager::loadDesktopSoundFont(const std::string& path,std::string& erro
     desktopDefaultFont=font;desktopBrowserFont=std::move(font);_songTSf=desktopDefaultFont.get();
     desktopSoundFontPath=desktopBrowserFontPath=juce::File(juce::String::fromUTF8(path.c_str())).getFullPathName().toStdString();
     for(auto& track:AuditioningTrack)if(track)track->AuditioningTrackInit();
-    juce::Logger::writeToLog("SoundFont loaded: "+juce::String::fromUTF8(desktopSoundFontPath.c_str())+" ("+juce::String(tsf_get_presetcount(static_cast<tsf*>(_songTSf)))+" presets)");
+    juce::Logger::writeToLog("SoundFont loaded: "+juce::String::fromUTF8(desktopSoundFontPath.c_str())+" ("+juce::String(SF2::count(static_cast<SF2::Bank*>(_songTSf)))+" presets)");
     return true;
 }
 
@@ -7297,7 +7307,7 @@ bool SongManager::assignDesktopSoundFont(const std::string& name,const std::stri
     if(!font){if(error.empty())error="No default bank is loaded.";return false;}
     const int bank=SoundFontProgram::isCustom(program)?SoundFontProgram::bank(program):(program>127?128:0);
     const int number=SoundFontProgram::isCustom(program)?SoundFontProgram::program(program):(program>127?Track::getTsfPresetFromIgniteIndex(program):program);
-    if(tsf_get_presetindex(static_cast<tsf*>(font.get()),bank,number)<0){error="That preset is unavailable in the selected bank.";return false;}
+    if(SF2::index(static_cast<SF2::Bank*>(font.get()),bank,number)<0){error="That preset is unavailable in the selected bank.";return false;}
     if(activeSong){stopRecord();stopSong();setSystemState(KEY_PRESSED::STOP_KEY);}
     auto command=[&](InstrumentParam param,AnyType value){return engine.SetCommand(moduleId_t(ModuleName::moduleUI),moduleId_t(ModuleName::moduleInstrument),paramId_t(param),value);};
     command(InstrumentParam::paramSetActiveInstrument,name);
@@ -7357,7 +7367,7 @@ bool SongManager::desktopPreviewPreset(int presetIndex)
 {
     auto lock = engine.lockDesktopState();
     if (_state != SYSTEM_STATE::IDLE || !(desktopBrowserFont?desktopBrowserFont:desktopDefaultFont) || presetIndex < 0 ||
-        presetIndex >= tsf_get_presetcount(static_cast<tsf*>((desktopBrowserFont?desktopBrowserFont:desktopDefaultFont).get()))) return false;
+        presetIndex >= SF2::count(static_cast<SF2::Bank*>((desktopBrowserFont?desktopBrowserFont:desktopDefaultFont).get()))) return false;
     AuditioningTrack[0]->useDesktopSoundFont(desktopBrowserFont?desktopBrowserFont:desktopDefaultFont);
     setAuditioningPreset(0, presetIndex);
     setAuditioningState(true);

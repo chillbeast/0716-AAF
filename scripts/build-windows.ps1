@@ -18,8 +18,8 @@ $juce=Join-Path $build 'deps\JUCE'
 if(Test-Path -LiteralPath $juce){$configure+='-DCPM_JUCE_SOURCE='+$juce.Replace('\','/')}
 Write-Output "Configuring Ignite $configuration"
 Invoke-CMakeLogged $configure (Join-Path $build "configure-$tree.log")
-Invoke-CMakeLogged @('--build',$directory,'--config',$configuration,'--target','Ignite','IgniteDesktopTests','IgniteSoundFontProbe','--parallel',"$Jobs") (Join-Path $build "build-$tree-$configuration.log")
-if($DebugBuild -and !$Asan){Invoke-CMakeLogged @('--build',$directory,'--config','Debug','--target','Ignite','IgniteDesktopTests','IgniteSoundFontProbe','--parallel',"$Jobs") (Join-Path $build 'build-win-Debug.log')}
+Invoke-CMakeLogged @('--build',$directory,'--config',$configuration,'--target','Ignite','IgniteDesktopTests','IgniteSoundFontProbe','IgniteSoundFontCompatibility','--parallel',"$Jobs") (Join-Path $build "build-$tree-$configuration.log")
+if($DebugBuild -and !$Asan){Invoke-CMakeLogged @('--build',$directory,'--config','Debug','--target','Ignite','IgniteDesktopTests','IgniteSoundFontProbe','IgniteSoundFontCompatibility','--parallel',"$Jobs") (Join-Path $build 'build-win-Debug.log')}
 if(!$Asan) {
     Write-Output 'Building standalone AudIO and packet-protocol libraries'
     $audio=Join-Path $build 'audio'

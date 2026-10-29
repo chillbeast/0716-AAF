@@ -4,11 +4,13 @@ Open **Desktop settings** in the top toolbar, or press **Ctrl+,**. The firmware 
 
 ## Monitor layouts
 
-The **Compact / Hardware** toolbar switches between a large touchscreen with closely spaced controls and the SVG hardware faceplate. Compact is the default; your choice is saved as `PanelLayout` in `desktop.json`. The same touchscreen and all 69 controls stay active across switches, including held/latched SHIFT state. The initial window fits the monitor work area, and Compact keeps the touchscreen's original aspect ratio when resized.
+The **Hardware / Compact / Touchscreen** toolbar switches between a large touchscreen with closely spaced controls and the SVG hardware faceplate. Compact is the default; your choice is saved as `PanelLayout` in `desktop.json`. Touchscreen hides all 69 hardware controls and fits the live display to the window, preserving its aspect ratio. The small mode/settings toolbar remains available. Keyboard shortcuts and MIDI/remote mappings keep working; switching layouts preserves the session and latched SHIFT state. The initial window fits the monitor work area, and Compact keeps the touchscreen's original aspect ratio when resized.
 
 ![Compact layout with more room for the firmware screen](images/ignite-compact.png)
 
-Use `Ignite.exe --compact` or `--hardware` for a temporary launch override. The source launcher accepts `scripts/run-ignite.ps1 -Layout Compact` or `-Layout Hardware`. These overrides leave the saved choice alone. `--touchscreen` still opens the screen on its own.
+Use `Ignite.exe --compact` or `--hardware` for a temporary launch override. The source launcher accepts `scripts/run-ignite.ps1 -Layout Compact` or `-Layout Hardware`. These overrides leave the saved choice alone. Use `--touchscreen` or `-Layout Touchscreen` for the third mode. All three modes resize and remember toolbar selections.
+
+![Touchscreen mode with hardware controls hidden](images/ignite-touchscreen.png)
 
 ## Audio
 
@@ -26,7 +28,7 @@ Assign the matching input port and channel to a track's receive instrument, and 
 
 The automated tests inject MIDI into the same router used by device callbacks. They check all 16 logical input/output IDs, channel filtering, step entry, live note velocity/duration, saving and reopening. No MIDI input devices were available during this pass, so physical controller input, Windows driver behavior, external clock timing and external hardware output remain unverified.
 
-Internal synthesis now responds to sustain, pitch bend/RPN range, volume/expression, bank/program, modulation and pressure. Modulation/pressure use a basic vibrato mapping. All Notes Off honors sustain; All Sound Off clears the track voices/effects. Panic permits subsequent notes without reloading the bank. Custom SF2 modulator matrices are not fully implemented.
+Internal synthesis now responds to sustain, pitch bend/RPN range, volume/expression, bank/program, modulation and pressure. Modulation and pressure follow the SoundFont's standard defaults and custom modulators. All Notes Off honors sustain; All Sound Off clears the track voices/effects. Panic permits subsequent notes without reloading the bank. Instrument/preset modulators, global/local override and default-modulator replacement are supported.
 
 ## Saving and editor fixes
 
@@ -44,7 +46,7 @@ The browser lists actual preset names and zero-based **bank:program** numbers, i
 
 **Set as default SF2** saves the browsed file as the startup default, retaining explicit instrument assignments. **Use default SF2** returns the selected instrument to the default, preserving a matching preset or choosing the first available preset. Assigning a bank or changing the default stops playback. Missing assigned files stay silent without substituting another bank; other instruments continue working. Backups retain paths/programs, with SF2 samples kept outside the archive.
 
-Windows rendering is stereo at 48 kHz, with independent stereo EQ/filter/chorus and reverb. MIDI pan reaches the actual output. **Voices per track** offers 8, 16, 32, 64 and 128; the default is 32. The limit applies to all tracks; changing it stops playback and sounding notes. Layered presets use multiple voices per note. The audio adapter preserves stereo across driver block sizes and downmixes for mono output. SF3 and complete SoundFont modulators remain unqualified.
+Windows rendering is stereo at 48 kHz, with independent stereo EQ/filter/chorus and reverb. MIDI pan reaches the actual output. **Voices per track** offers 8, 16, 32, 64 and 128; the default is 32. The limit applies to all tracks; changing it stops playback and sounding notes. Layered presets use multiple voices per note. The audio adapter preserves stereo across driver block sizes and downmixes for mono output. Windows uses FluidSynth 2.6.1 for full SF2 synthesis: instrument/preset modulators (including source curves, amount sources and pressure), default overrides, linked stereo and 24-bit samples. SF2 reverb/chorus sends run inside the synth before the existing panel effects. Engine defaults can change levels and timbre compared with older TinySoundFont releases; review saved mixes. SF3 compressed fonts are not enabled.
 
 EQ gain now uses -12 to +12 dB, with 0 dB bypass. Check existing nonzero saved EQ gains after upgrading: old values were used as linear multipliers and the shelves were reversed. Release time now applies independently to each synth.
 
@@ -86,4 +88,4 @@ Build the simulator, native checks, SoundFont probe and standalone supporting li
 
 Run the additional desktop feature round trip with `scripts/features-windows.ps1`. See [BUILD_WINDOWS.md](BUILD_WINDOWS.md) for tools and [AUDIT_FIXES.md](AUDIT_FIXES.md) for repairs and verification evidence.
 
-Release is the normal-use build. Debug still has an inherited retained UI graph that produces a long CRT leak report during exit. AudIO and the packet protocol build independently; the main app uses its firmware TinySoundFont path. The optional VST source is a template, not a functioning Ignite plugin. Device images, MCU firmware, CV/Gate, sync jacks, Wi-Fi transfer and physical calibration need separate hardware work; omitted upstream components prevent a complete device-image build from this checkout alone.
+Release is the normal-use build. Debug still has an inherited retained UI graph that produces a long CRT leak report during exit. AudIO and the packet protocol build independently; the Windows app uses the embedded FluidSynth SF2 engine; firmware/non-Windows builds retain TinySoundFont. See [third-party notices](THIRD_PARTY_NOTICES.md) for licensing and the included source/relink path. The optional VST source is a template, not a functioning Ignite plugin. Device images, MCU firmware, CV/Gate, sync jacks, Wi-Fi transfer and physical calibration need separate hardware work; omitted upstream components prevent a complete device-image build from this checkout alone.

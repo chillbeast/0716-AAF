@@ -18,7 +18,7 @@ This builds Release and Debug applications/helpers, the standalone AudIO librari
 
 ```powershell
 cmake -S Source/Application -B Source/Application/build/win -G 'Visual Studio 17 2022' -A x64 -DTIMESTAMP=OFF
-cmake --build Source/Application/build/win --config Release --target Ignite IgniteDesktopTests IgniteSoundFontProbe --parallel 4
+cmake --build Source/Application/build/win --config Release --target Ignite IgniteDesktopTests IgniteSoundFontProbe IgniteSoundFontCompatibility --parallel 4
 ctest --test-dir Source/Application/build/win -C Release --output-on-failure
 ```
 
@@ -74,7 +74,7 @@ Debug uses the same build tree with `--config Debug`. The inherited UI retains m
 
 The manual source is `docs/manual/USER_MANUAL.md`. To regenerate its self-contained HTML and PDF, install Python-Markdown (`python -m pip install Markdown`), then run `python scripts/build-manual.py --pdf`. PDF rendering uses an installed Edge/Chrome browser in headless mode with a separate temporary profile; `--browser` selects another Chromium executable. These tools are only needed for documentation development.
 
-After committing the release source, create the versioned Windows package with `scripts/package-windows.ps1 -Version v0.3.3-desktop.7`. It includes the tested Release executable, assets, manual, license, release notes and corresponding source. `BUILD.json` records the source commit, whether the checkout is dirty and the executable SHA-256. The ZIP builder checks its entries and CRCs and refuses included SF2 files.
+After committing the release source, create the versioned Windows package with `scripts/package-windows.ps1 -Version v0.3.3-desktop.8`. It includes the tested Release executable, assets, manual, license, release notes and corresponding source. `BUILD.json` records the source commit, embedded FluidSynth version/commit, whether the checkout is dirty and the executable SHA-256. The ZIP builder checks its entries and CRCs and refuses included SF2 files.
 
 ## Device build boundary
 
@@ -89,3 +89,20 @@ Run `scripts/media-windows.ps1 -Configuration Release` for 93 setup/media/reopen
 Run `scripts/midi-song-windows.ps1 -Configuration Release` for 131 arrangement setup/song-import/round-trip/reopen checks. It generates original stereo SF2 and MIDI fixtures, validates type 0/1 files, bad metadata, fractional tempos, meters, program changes, percussion, cross-scene notes and preservation of existing songs. Use `-Configuration RelWithDebInfo -BuildDirectory asan` with the runtime on PATH for the same checks under AddressSanitizer.
 
 The expanded MIDI song checks include rendered pedal-held notes across scenes, channel-mode termination, parameter-controller ordering and reset, malformed/zero-tempo metadata, unsupported ports and overlapping clip notes. Media checks also verify external-only port metadata without program changes and the default port for unrouted internal instruments.
+
+
+## Embedded SF2 engine
+
+Windows builds pin FluidSynth 2.6.1 at `71e85b2ca6bf48641ba7e2261d8f2640ae473773`.
+CMake downloads its source unless `Source/Application/third_party/fluidsynth`
+exists (as in release packages) or the local `build/deps/fluidsynth` cache exists.
+The static library uses C++11 OS support, without GLib, audio/MIDI drivers,
+libsndfile, DLS or SF3. JUCE owns the actual devices. No new runtime DLL is needed.
+
+The packaged LGPL source/license and complete application source allow rebuilding
+and relinking after modifying the engine. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+`IgniteSoundFontCompatibility` adds generated original modulation/effect/24-bit/
+linked-stereo banks to CTest; sample banks are excluded from distribution.
+The standalone `IgniteSoundFontProbe` uses the same desktop backend and writes
+stereo 48 kHz PCM16 WAV. `--touchscreen` and launcher `-Layout Touchscreen` select
+the remembered third toolbar mode temporarily, without altering saved preferences.

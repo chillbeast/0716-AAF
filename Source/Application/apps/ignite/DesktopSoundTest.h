@@ -63,7 +63,9 @@ public:
             auto firstAudio=render(a),secondAudio=render(b);
             check(a.audioBuff.getNumChannels()==2 && std::abs(frequency(firstAudio[0])-440)<5 && std::abs(frequency(firstAudio[1])-880)<8,"stereo SF2 regions retain independent pitches in both channels");
             check(std::abs(frequency(secondAudio[0])-880)<8 && std::abs(frequency(secondAudio[1])-880)<8,"two instruments render different banks at the same time");
-            b.sfHandleMidi(juce::MidiMessage::controllerEvent(1,10,0));auto panned=render(b);
+            b.sfHandleMidi(juce::MidiMessage::controllerEvent(1,10,0));
+            // The full SF2 engine smooths controller changes; measure the settled pan.
+            render(b,1);auto panned=render(b);
             check(rms(panned[0])>0.001 && rms(panned[1])<1e-8,"MIDI pan reaches the stereo render output");
             b.sfHandleMidi(juce::MidiMessage::controllerEvent(1,10,64));
             const auto oldDefault=songs.get_tsf_instance();
@@ -85,7 +87,7 @@ public:
             for(int limit:{8,32,64})
             {
                 songs.setDesktopVoiceLimit(limit);rebuild();for(int note=48;note<72;++note)b.sfNoteOn(0,uint8_t(note),0.5f);
-                check(tsf_active_voice_count(static_cast<tsf*>(b._trackSf))==std::min(limit,24),"configured voice limit "+juce::String(limit)+" handles a 24-note chord");
+                check(b.desktopActiveVoices()==std::min(limit,24),"configured voice limit "+juce::String(limit)+" handles a 24-note chord");
             }
             songs._state=SYSTEM_STATE::PLAY;songs.setDesktopVoiceLimit(32);
             check(songs.getSystemState()==SYSTEM_STATE::IDLE,"changing voice limits while playing leaves transport stopped");
@@ -94,7 +96,7 @@ public:
             a.unloadDesktopSoundFont();a.prepareDesktopMonitor();rebuild();
             a.setInternalAudioEffects(uint8_t(InternalAudioCC::RELEASE),1000,false);b.setInternalAudioEffects(uint8_t(InternalAudioCC::RELEASE),100,false);
             a.sfNoteOn(0,69,0.8f);b.sfNoteOn(0,69,0.8f);render(a,3);render(b,3);a.sfNoteOff(0,69);b.sfNoteOff(0,69);render(a,20);render(b,20);
-            check(tsf_active_voice_count(static_cast<tsf*>(a._trackSf))>0 && tsf_active_voice_count(static_cast<tsf*>(b._trackSf))==0,"release time is per synth and uses the configured milliseconds");
+            check(a.desktopActiveVoices()>0 && b.desktopActiveVoices()==0,"release time is per synth and uses the configured milliseconds");
 
             b.sfReset();b.effectsInit();
             b.setInternalAudioEffects(uint8_t(InternalAudioCC::EQ_HIGH),4000,false);b.setInternalAudioEffects(uint8_t(InternalAudioCC::EQ_HIGH),6,true);

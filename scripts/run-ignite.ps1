@@ -3,7 +3,7 @@ param(
     [string]$SoundFont = '',
     [string]$DataDirectory = '',
     [switch]$Touchscreen,
-    [ValidateSet('Hardware','Compact')][string]$Layout
+    [ValidateSet('Hardware','Compact','Touchscreen')][string]$Layout
 )
 $ErrorActionPreference = 'Stop'
 $explicitSoundFont = [bool]$SoundFont

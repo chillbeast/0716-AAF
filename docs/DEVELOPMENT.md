@@ -199,3 +199,67 @@ Desktop.7 evidence, relative to `Source/Application/build`:
 | No-font workflow (91) | - | `workflow/20261029-110239` |
 
 Release/Debug/ASan builds and native checks pass (84/85/84). The final port correction is covered by the two expanded suites above; other application/backend code is unchanged by that correction. Sanitizer prefixes `asan_fidelity7`, `asan_fidelity7_final` and `asan_fidelity7_ports` produce no address-error reports. The manual has 23 pages and explains conversion/re-import and route limitations. Counts include repeated setup. VST integration, complete SF2 modulators and physical I/O qualification remain separate outstanding work.
+
+
+## Desktop.8 full SF2 engine and third layout
+
+Windows uses the pinned static FluidSynth 2.6.1 backend through `SoundFontRuntime.h`.
+It shares loaded bank samples/modulators via virtual SoundFont proxies, with one
+independent synth per track. JUCE continues to own audio/MIDI devices and panel
+post-effects. Firmware/non-Windows keeps TinySoundFont. The probe uses the desktop
+backend and writes stereo WAV.
+
+`IgniteSoundFontCompatibility` generates original banks and runs 31 checks for
+instrument/preset modulators, global/local/default overrides, source direction,
+curves and amount sources, wheel/pressure, native effect sends, RPN and controller
+preservation, Unicode filenames, linked stereo and the low bytes of 24-bit samples.
+Native SF2 envelopes/controllers differ from TinySoundFont; steady-state pan and
+expression assertions allow one 20 ms controller-smoothing block first. The SF2
+default expression modulator has a finite 96 dB attenuation range; the near-silence
+check requires at least 80 dB reduction rather than TinySoundFont's exact zero.
+
+All Sound Off drains pending voices, then clears native reverb/chorus histories
+using reset hooks from the pinned static library. It keeps channel/RPN/NRPN state
+without a MIDI system reset. The regression catches an active held note reviving
+when envelope generators are reset before termination finishes. Normal Panic
+still resets controllers. Shutdown unloads active/audition synths and banks before
+C++ thread-local destruction; ASan exposed the previous global teardown ordering.
+Original legacy test SF2 INFO strings now have the even sizes required by SF2;
+RIFF outer padding alone was insufficient for FluidSynth's structural validation.
+
+Touchscreen is a third `DesktopPanel::Layout`, saved as `PanelLayout=touchscreen`.
+All 69 controls stay allocated but hidden. The same screen/session remains, with
+aspect-preserving sizing and the mode/settings toolbar. CLI/launcher overrides
+are temporary. The expanded layout suite totals 111 checks over five launches,
+including saved startup, all overrides, hidden controls, maximum display area,
+keyboard navigation, resize and repeated mode changes.
+
+Packages carry the LGPL license and complete corresponding FluidSynth source
+(including the test/doc-registration guard) under
+`source/Source/Application/third_party/fluidsynth`. CMake selects that copy for
+rebuilding/relinking. No SF2/SF3 files are packaged; SF3/libsndfile are disabled.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+
+Desktop.8 final evidence, relative to `Source/Application/build`:
+
+| Suite | Release | ASan |
+|---|---|---|
+| MIDI/save/editor (107) | `correctness/20261029-121647` | `correctness/20261029-121512` |
+| Stereo/effects/banks (99) | `sound/20261029-121659` | `sound/20261029-121614` |
+| MIDI songs (131) | `midi-song/20261029-121718` | `midi-song/20261029-121711` |
+| Media (93) | `media/20261029-121735` | `media/20261029-121749` |
+| Features (75) | `features/20261029-121805` | `features/20261029-121842` |
+| Layouts (111) | `layout/20261029-121821` | `layout/20261029-121917` |
+| Device/recovery (107) | `workflow/20261029-121848` | `workflow/20261029-122028` |
+| Font/no-font smoke (14) | `smoke/20261029-121902` | - |
+| No-font workflow (91) | - | `workflow/20261029-122058` |
+
+All runs pass with normal exits. Native tests pass 84 legacy + 31 full-SF2 in
+Release/ASan and 85 + 31 in Debug. Final ASan prefix `asan_sf2_publish` produces
+no address-error report. `sf2-packaged-relink` configures directly from packaged
+corresponding source, rebuilds the engine/native tests, and passes 84 + 31 checks.
+The private CT4MGM bank loads 329 presets (128/128 GM programs and 10 drum sets)
+and renders five representative programs through the same backend. No private
+banks are distributed. The manual is 24 pages. Counts include repeated setup;
+physical MIDI/CV/clock and VST integration remain outside this verification.

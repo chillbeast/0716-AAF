@@ -16,13 +16,14 @@ private:
         ++checks; if (!ok) ++failures;
         juce::Logger::writeToLog(juce::String(ok?"PASS: ":"FAIL: ")+name);
     }
-    void choose(bool hardware)
+    void choose(bool hardware){choose(hardware?DesktopPanel::Layout::Hardware:DesktopPanel::Layout::Compact);}
+    void choose(DesktopPanel::Layout value)
     {
-        auto* button=dynamic_cast<juce::Button*>(panel.findChildWithID(hardware?"layout-hardware":"layout-compact"));
+        auto* button=dynamic_cast<juce::Button*>(panel.findChildWithID(value==DesktopPanel::Layout::Hardware?"layout-hardware":value==DesktopPanel::Layout::Touchscreen?"layout-touchscreen":"layout-compact"));
         check(button!=nullptr,"layout selector is an accessible button");
         if (button)
         {
-            waitingForLayout=true; requestedHardware=hardware;
+            waitingForLayout=true; requestedLayout=value;
             layoutDeadline=juce::Time::getMillisecondCounterHiRes()+3000;
             button->triggerClick();
         }
@@ -36,6 +37,17 @@ private:
         const auto screenBounds=screen.getBoundsInParent();
         check(surface->getLocalBounds().contains(screenBounds),"touchscreen fits within the current layout");
         if (panel.isHardwareLayout()) return;
+        if(panel.isTouchscreenLayout())
+        {
+            int total=0,visible=0;
+            for(auto* child:surface->getChildren())if(child->getComponentID().startsWith("ignite-control-"))
+            {++total;if(child->isVisible())++visible;}
+            check(total==69 && visible==0,"touchscreen mode hides every hardware control without destroying them");
+            check(std::abs(float(screenBounds.getWidth())/screenBounds.getHeight()-1024.0f/600)<0.01f,"touchscreen mode preserves the display aspect ratio");
+            const float available=juce::jmin(float(surface->getWidth())/1024,float(surface->getHeight())/600);
+            check(screenBounds.getWidth()>=1024*available-2 && screenBounds.getHeight()>=600*available-2,"touchscreen mode uses the full available display area");
+            return;
+        }
         bool inside=true,separate=true;
         std::vector<juce::Rectangle<int>> bounds;
         for (auto* child : surface->getChildren())
@@ -74,7 +86,7 @@ private:
     {
         if (waitingForLayout)
         {
-            if (panel.isHardwareLayout()!=requestedHardware && juce::Time::getMillisecondCounterHiRes()<layoutDeadline) return;
+            if (panel.getLayout()!=requestedLayout && juce::Time::getMillisecondCounterHiRes()<layoutDeadline) return;
             waitingForLayout=false;
         }
         using P=Ignite::FrontPannelParam;
@@ -83,7 +95,7 @@ private:
             case 0:
             {
                 const auto expected=juce::SystemStats::getEnvironmentVariable("IGNITE_EXPECT_LAYOUT","compact");
-                check(panel.isHardwareLayout()==(expected=="hardware"),"startup honors the saved layout or explicit override");
+                check(panel.getLayout()==(expected=="hardware"?DesktopPanel::Layout::Hardware:expected=="touchscreen"?DesktopPanel::Layout::Touchscreen:DesktopPanel::Layout::Compact),"startup honors the saved layout or explicit override");
                 auto preferences=IgniteDesktop::readPreferences();
                 check(preferences.getProperty("LayoutSentinel","").toString()=="preserve-other-settings","layout changes preserve other desktop preferences");
                 auto* window=panel.getTopLevelComponent();
@@ -91,7 +103,7 @@ private:
                 check(display && display->userArea.contains(window->getScreenBounds()),"initial window fits the monitor work area");
                 if (verify)
                 {
-                    check(preferences.getProperty("PanelLayout","").toString()=="compact","saved compact choice survives restart and temporary overrides");
+                    check(preferences.getProperty("PanelLayout","").toString()=="touchscreen","saved touchscreen choice survives restart and temporary overrides");
                     geometry(); finish(); return;
                 }
                 auto command=[&](Ignite::ModuleName module,auto parameter,Ignite::AnyType value)
@@ -131,12 +143,40 @@ private:
             case 7:
                 check(ui::FrountPannel::GetFrountPannelInstance()->getShiftKeyStatus(),"compact SHIFT control engages");
                 panel.tap(P::paramKey_PAGESHIFT); panel.tap(P::paramKey_MENU); break;
-            default:
+            case 8:
                 check(!ui::FrountPannel::GetFrountPannelInstance()->getShiftKeyStatus(),"compact SHIFT control releases");
                 check(ui::AppMainmode::getMainModeInstance()->GetActiveTab()==mt::Ignite::tabs::MENU,"compact navigation reaches the firmware menu");
                 sameState();
                 check(IgniteDesktop::readPreferences().getProperty("PanelLayout","").toString()=="compact","toolbar choice is saved for the next launch");
-                finish(); break;
+                compactArea=ui::getAppHome().getBoundsInParent().getWidth()*ui::getAppHome().getBoundsInParent().getHeight();
+                choose(DesktopPanel::Layout::Touchscreen);break;
+            case 9:
+                check(panel.isTouchscreenLayout(),"Touchscreen toolbar button selects the third mode");
+                sameState();geometry();snapshot("touchscreen-960x540");
+                check(ui::getAppHome().getBoundsInParent().getWidth()*ui::getAppHome().getBoundsInParent().getHeight()>compactArea*1.5,"touchscreen-only mode gives the display more area than compact mode");
+                break;
+            case 10:
+                resizeWindow(1280,720);geometry();snapshot("touchscreen-1280x720");
+                layoutDeadline=juce::Time::getMillisecondCounterHiRes()+3000;
+                check(panel.keyPressed(juce::KeyPress(juce::KeyPress::F2Key)),"keyboard navigation remains available without panel controls");break;
+            case 11:
+                if(ui::AppMainmode::getMainModeInstance()->GetActiveTab()!=mt::Ignite::tabs::SONG && juce::Time::getMillisecondCounterHiRes()<layoutDeadline){--stage;return;}
+                check(ui::AppMainmode::getMainModeInstance()->GetActiveTab()==mt::Ignite::tabs::SONG,"touchscreen-mode keyboard navigation reaches Song");
+                choose(true);break;
+            case 12:
+                check(panel.isHardwareLayout(),"Hardware mode can be restored from Touchscreen");
+                sameState();geometry();choose(DesktopPanel::Layout::Touchscreen);break;
+            case 13:
+                for(int i=0;i<18;++i)panel.setLayout(DesktopPanel::Layout(i%3),false);
+                panel.setLayout(DesktopPanel::Layout::Touchscreen,false);sameState();geometry();
+                panel.tap(P::paramKey_PAGESHIFT);break;
+            case 14:
+                check(ui::FrountPannel::GetFrountPannelInstance()->getShiftKeyStatus(),"mapped panel input still engages SHIFT in touchscreen mode");
+                panel.tap(P::paramKey_PAGESHIFT);break;
+            default:
+                check(!ui::FrountPannel::GetFrountPannelInstance()->getShiftKeyStatus(),"mapped panel input releases SHIFT in touchscreen mode");
+                check(IgniteDesktop::readPreferences().getProperty("PanelLayout","").toString()=="touchscreen","touchscreen choice is saved for the next launch");
+                sameState();finish();break;
         }
     }
     DesktopPanel& panel;
@@ -147,6 +187,8 @@ private:
     const void* originalScreen=nullptr;
     const void* originalSong=nullptr;
     int stage=0,checks=0,failures=0;
-    bool waitingForLayout=false,requestedHardware=false;
+    bool waitingForLayout=false;
+    DesktopPanel::Layout requestedLayout=DesktopPanel::Layout::Compact;
+    int compactArea=0;
     double layoutDeadline=0;
 };

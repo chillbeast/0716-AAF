@@ -124,6 +124,9 @@ if(TIMESTAMP)
 endif()
 
 ignite_enable_sanitizer(${TargetName})
+if(WIN32)
+    target_link_libraries(${TargetName} PRIVATE IgniteSoundFontRuntime)
+endif()
 
 ## CPack variables...
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME} )

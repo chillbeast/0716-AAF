@@ -13,7 +13,7 @@ def main():
     if destination.is_relative_to(folder):
         raise ValueError("The archive must be outside the packaged directory")
     files = sorted(path for path in folder.rglob("*") if path.is_file())
-    if any(path.suffix.lower() == ".sf2" for path in files):
+    if any(path.suffix.lower() in {".sf2", ".sf3", ".dls"} for path in files):
         raise ValueError("SoundFonts must not be included in this package")
     pending = destination.with_suffix(destination.suffix + ".tmp")
     with zipfile.ZipFile(pending, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:

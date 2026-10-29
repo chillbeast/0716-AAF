@@ -139,3 +139,25 @@ MIDI export previously wrote port metadata only inside program initialization. W
 The song suite now totals 131 checks (50 setup, 69 song/audio checks, 12 reopen). New fixtures cover pedal-held audio after a scene change and silence after pedal release, mode messages 120/121/123–127, RPN deselection/reset ordering, zero tempo, malformed/unavailable ports and overlapping clip notes. Media totals 93 (50 setup, 38 media, five reopen), adding external-only routing without unwanted program changes and default internal port metadata. The full prior regression suites are also rerun.
 
 Port validation uses the actual firmware enum: DIN 0-4, CV 5-12, USB-device 13-18 and USB-host 19-23. MIDI file ports accept DIN/USB ranges and reject CV entries. A dense 0-15 assumption in desktop.6 clamped later USB destinations; the new import checks exercise all 16 valid IDs and every CV exclusion, and export checks use USB host 5.
+
+
+## Desktop.8 SF2 compatibility and display modes
+
+The Windows backend now uses pinned FluidSynth 2.6.1 for SF2 modulators, standard
+modulator replacement, preset/instrument hierarchy, native reverb/chorus sends,
+24-bit samples and linked stereo. Independent track synths share loaded bank data;
+per-instrument paths, release overrides, polyphony, panel effects and backup paths
+remain integrated. An original 31-check native suite verifies rendered behavior,
+including Unicode filenames and controller state after All Sound Off. The existing
+fixture's odd INFO-string lengths are corrected for SF2 structural validity.
+
+All Sound Off explicitly finishes voice termination before clearing native effect
+histories, preserving controller/parameter state. Shutdown releases native synths
+before the runtime's thread-local destructors run. These fixes address regressions
+found by active-note audio checks and AddressSanitizer during integration.
+
+The new Touchscreen layout hides every physical control while retaining the live
+screen, keyboard/mapped input and a small mode/settings toolbar. It scales without
+clipping at odd window sizes, saves the selection, supports temporary CLI overrides
+and switches back to the existing layouts without reconstructing the session.
+The expanded five-launch layout suite contains 111 checks.

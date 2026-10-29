@@ -138,14 +138,14 @@ public:
 
 		if (engineThread.joinable()) //this block the UI to load
 			engineThread.join();
-		mainWindow.reset(new MainWindow(getApplicationName(), !commandLine.contains("--touchscreen")));
+		mainWindow.reset(new MainWindow(getApplicationName(), true));
 #ifdef _WIN64
 		showWaitForBootComplete(true);// pop-up exits
 #endif
 #else //SHOW_BOOT_IMAGE
 		std::thread engineThread(UiEngineInterfaceInit);
 		engineThread.join();
-		mainWindow.reset(new MainWindow(getApplicationName(), !commandLine.contains("--touchscreen")));
+		mainWindow.reset(new MainWindow(getApplicationName(), true));
 #endif//SHOW_BOOT_IMAGE
 #ifdef _WIN32
         midiRouter = std::make_unique<IgniteDesktop::MidiRouter>(*static_cast<IgniteEngine*>(_PUiVirtualEngine.get()));
@@ -154,7 +154,8 @@ public:
         if (auto* panel = dynamic_cast<DesktopPanel*>(mainWindow->getContentComponent()))
         {
             panel->showDesktopSettings = [this] { openDesktopSettings(); };
-            if (commandLine.contains("--hardware")) panel->setHardwareLayout(true,false);
+            if (commandLine.contains("--touchscreen")) panel->setLayout(DesktopPanel::Layout::Touchscreen,false);
+            else if (commandLine.contains("--hardware")) panel->setHardwareLayout(true,false);
             else if (commandLine.contains("--compact")) panel->setHardwareLayout(false,false);
         }
 #endif

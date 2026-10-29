@@ -149,6 +149,7 @@ class DesktopPanel : public juce::Component, private juce::Timer
     };
 
 public:
+    enum class Layout { Hardware,Compact,Touchscreen };
     DesktopPanel()
     {
         addAndMakeVisible(surface);
@@ -193,25 +194,28 @@ public:
             key(("PAD " + juce::String(i + 1)).toRawUTF8(), Param(30 + i), x - 13, 398, 26, 43);
         }
         setSize(1346, 860);
-        for (auto* component : std::initializer_list<juce::Component*>{&title,&hardwareButton,&compactButton,&settingsButton}) addAndMakeVisible(component);
+        for (auto* component : std::initializer_list<juce::Component*>{&title,&hardwareButton,&compactButton,&touchscreenButton,&settingsButton}) addAndMakeVisible(component);
         title.setText("IGNITE",juce::dontSendNotification); title.setFont(juce::Font(17,juce::Font::bold));
-        hardwareButton.setComponentID("layout-hardware"); compactButton.setComponentID("layout-compact");
-        for (auto* button : {&hardwareButton,&compactButton})
+        hardwareButton.setComponentID("layout-hardware"); compactButton.setComponentID("layout-compact"); touchscreenButton.setComponentID("layout-touchscreen");
+        for (auto* button : {&hardwareButton,&compactButton,&touchscreenButton})
         {
             button->setColour(juce::TextButton::buttonOnColourId,juce::Colour(0xff963f58));
             button->setColour(juce::TextButton::textColourOnId,juce::Colours::white);
         }
-        for (auto* button : {&hardwareButton,&compactButton,&settingsButton})
+        for (auto* button : {&hardwareButton,&compactButton,&touchscreenButton,&settingsButton})
         {
             button->setWantsKeyboardFocus(false);
             button->setMouseClickGrabsKeyboardFocus(false);
         }
         hardwareButton.setTooltip("Use the original hardware arrangement");
         compactButton.setTooltip("Larger touchscreen with closely spaced controls for computer monitors");
+        touchscreenButton.setTooltip("Show only the live touchscreen, keeping keyboard and mapped controls available");
+        touchscreenButton.onClick=[this] {setLayout(Layout::Touchscreen);};
         hardwareButton.onClick=[this] {setHardwareLayout(true);};
         compactButton.onClick=[this] {setHardwareLayout(false);};
         settingsButton.onClick = [this] { if (showDesktopSettings) showDesktopSettings(); };
-        setHardwareLayout(IgniteDesktop::readPreferences().getProperty("PanelLayout","compact").toString()=="hardware",false);
+        const auto saved=IgniteDesktop::readPreferences().getProperty("PanelLayout","compact").toString();
+        setLayout(saved=="hardware"?Layout::Hardware:saved=="touchscreen"?Layout::Touchscreen:Layout::Compact,false);
         startTimerHz(20);
     }
     ~DesktopPanel() override
@@ -231,10 +235,11 @@ public:
         title.setBounds(bar.removeFromLeft(92));
         hardwareButton.setBounds(bar.removeFromLeft(96).reduced(2,0));
         compactButton.setBounds(bar.removeFromLeft(96).reduced(2,0));
+        touchscreenButton.setBounds(bar.removeFromLeft(118).reduced(2,0));
         settingsButton.setBounds(bar.removeFromRight(148));
         auto content=getLocalBounds().withTrimmedTop(toolbarHeight);
         surface.groups.clear();
-        if (hardwareLayout)
+        if (isHardwareLayout())
         {
             surface.setBounds(0,0,748,478);
             const float scale=juce::jmin(float(content.getWidth())/748,float(content.getHeight())/478);
@@ -246,20 +251,31 @@ public:
         else
         {
             surface.setTransform({}); surface.setBounds(content);
-            layoutCompact();
+            if(isTouchscreenLayout())
+            {
+                const auto area=surface.getLocalBounds().toFloat();
+                const float scale=juce::jmin(float(area.getWidth())/1024,float(area.getHeight())/600);
+                ui::getAppHome().setTransform(juce::AffineTransform::scale(scale).translated(area.getCentreX()-512*scale,area.getCentreY()-300*scale));
+            }
+            else layoutCompact();
         }
         surface.repaint();
     }
-    bool isHardwareLayout() const { return hardwareLayout; }
-    void setHardwareLayout(bool enabled,bool persist=true)
+    bool isHardwareLayout() const { return layout==Layout::Hardware; }
+    bool isTouchscreenLayout() const { return layout==Layout::Touchscreen; }
+    Layout getLayout() const {return layout;}
+    void setHardwareLayout(bool enabled,bool persist=true){setLayout(enabled?Layout::Hardware:Layout::Compact,persist);}
+    void setLayout(Layout value,bool persist=true)
     {
-        hardwareLayout=enabled; surface.hardware=enabled;
-        hardwareButton.setToggleState(enabled,juce::dontSendNotification);
-        compactButton.setToggleState(!enabled,juce::dontSendNotification);
+        layout=value;surface.hardware=isHardwareLayout();
+        hardwareButton.setToggleState(isHardwareLayout(),juce::dontSendNotification);
+        compactButton.setToggleState(layout==Layout::Compact,juce::dontSendNotification);
+        touchscreenButton.setToggleState(isTouchscreenLayout(),juce::dontSendNotification);
+        for(auto& control:controls)control->setVisible(!isTouchscreenLayout());
         if (persist)
         {
             auto preferences=IgniteDesktop::readPreferences();
-            preferences.getDynamicObject()->setProperty("PanelLayout",enabled?"hardware":"compact");
+            preferences.getDynamicObject()->setProperty("PanelLayout",isHardwareLayout()?"hardware":isTouchscreenLayout()?"touchscreen":"compact");
             if (!IgniteDesktop::writePreferences(preferences)) juce::Logger::writeToLog("Could not save the simulator layout preference.");
         }
         resized();
@@ -370,9 +386,9 @@ private:
     }
     Surface surface;
     static constexpr int toolbarHeight=40;
-    bool hardwareLayout=true;
+    Layout layout=Layout::Hardware;
     juce::Label title;
-    juce::TextButton hardwareButton{"Hardware"},compactButton{"Compact"},settingsButton{"Desktop settings"};
+    juce::TextButton hardwareButton{"Hardware"},compactButton{"Compact"},touchscreenButton{"Touchscreen"},settingsButton{"Desktop settings"};
     std::vector<std::unique_ptr<Control>> controls;
     juce::TooltipWindow tooltips{this, 500};
 };

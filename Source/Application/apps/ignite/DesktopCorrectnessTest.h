@@ -71,7 +71,9 @@ public:
             cc(64,0);check(rms(render(100))<baseLevel*0.2,"releasing sustain ends the recorded voice");
             program(0,0);midi(juce::MidiMessage::pitchWheel(16,16383));
             check(std::abs(frequency(render())/baseFrequency-std::pow(2.0,2.0/12))<0.02,"pitch bend is applied through the internal MIDI route");
-            cc(121,0);cc(11,0);check(rms(render())<0.000001,"expression silences the routed internal voice");
+            cc(121,0);cc(11,0);render(1);
+            // SF2's default attenuation modulator has a finite 96 dB range.
+            check(rms(render())<baseLevel*0.0001,"expression attenuates the routed voice by at least 80 dB after smoothing");
             cc(121,0);check(rms(render())>baseLevel*0.5,"reset controllers restores expression");
             midi(juce::MidiMessage::controllerEvent(1,11,0));
             check(rms(render())>baseLevel*0.5,"other input channels cannot change the selected track's synth controls");

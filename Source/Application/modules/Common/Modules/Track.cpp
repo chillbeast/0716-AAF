@@ -13,6 +13,7 @@
 
 #define TSF_IMPLEMENTATION
 #include "tsf.h"
+#include "Firmware/Application/Model/SoundFontRuntime.h"
 
 extern std::unique_ptr<SettingsSculptModeCnfg> _settingsSculptModeCnfg;
 //#define SCULPT_WITH_TIME
@@ -155,7 +156,7 @@ Track::Track (const Track& source) :
 Track::~Track ()
 {
 	delete _trackData;
-	tsf_close(static_cast<tsf*>(_trackSf));
+	SF2::close(static_cast<SF2::Synth*>(_trackSf));
 }
 
 void Track::setTrackRxInstrument (Instrument* val)
@@ -2597,40 +2598,40 @@ void Track::AuditioningTrackInit(void)
 	if (_trackSf == nullptr)
     {
         std::string error;desktopFontSource=_songManager->soundFontForInstrument(nullptr,error);
-        _trackSf=tsf_copy(static_cast<tsf*>(desktopFontSource.get()));
+        _trackSf=SF2::copy(static_cast<SF2::Bank*>(desktopFontSource.get()));
     }
 	/* TSF init */
 	//_trackSf = tsf_load_filename(SOUND_FONT_FILE);
-	tsf* sf = static_cast<tsf*>(_trackSf);
+	SF2::Synth* sf = static_cast<SF2::Synth*>(_trackSf);
 	if (sf == nullptr)
 		return;
-	tsf_set_output(sf, (audioChannels==2?TSF_STEREO_UNWEAVED:TSF_MONO), INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
-	tsf_set_max_voices(sf, _songManager->desktopVoiceLimit);// 8 note polyphony
-	tsf_channel_set_volume(sf, 0, 0.9f);//set to 0.9 and apply Master volume later
-	tsf_channel_set_presetindex(static_cast<tsf*>(_trackSf), 0, 0);
+	SF2::setOutput(sf, (audioChannels==2?TSF_STEREO_UNWEAVED:TSF_MONO), INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
+	SF2::setVoices(sf, _songManager->desktopVoiceLimit);// 8 note polyphony
+	SF2::setVolume(sf, 0, 0.9f);//set to 0.9 and apply Master volume later
+	SF2::setPresetIndex(static_cast<SF2::Synth*>(_trackSf), 0, 0);
 }
 void Track::AuditioningTrackSetPreset(int presetindex)
 {
 	if (_trackSf == nullptr)
 		return;
-	tsf_channel_set_presetindex(static_cast<tsf*>(_trackSf), 0, presetindex);
+	SF2::setPresetIndex(static_cast<SF2::Synth*>(_trackSf), 0, presetindex);
 }
 void Track::AuditioningTrackClear(void)
 {
 	_noteOnList.clear();
 	if (_trackSf == nullptr)
 		return;
-	tsf_channel_note_off_all(static_cast<tsf*>(_trackSf), 0);
+	SF2::allNotesOff(static_cast<SF2::Synth*>(_trackSf), 0);
 }
 
 void Track::sfInit(void)
 {
-	tsf* sf = static_cast<tsf*>(_trackSf);
+	SF2::Synth* sf = static_cast<SF2::Synth*>(_trackSf);
 	if (sf == nullptr)
 		return;
-	tsf_set_output(sf, (audioChannels==2?TSF_STEREO_UNWEAVED:TSF_MONO), INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
-	tsf_set_max_voices(sf, _songManager->desktopVoiceLimit);// 8 note polyphony
-	tsf_channel_set_volume(sf, 0, 0.9f);//set to 0.9 and apply Master volume later
+	SF2::setOutput(sf, (audioChannels==2?TSF_STEREO_UNWEAVED:TSF_MONO), INTERNAL_AUDIO_SAMPLE_RATE, 0); //sample rate
+	SF2::setVoices(sf, _songManager->desktopVoiceLimit);// 8 note polyphony
+	SF2::setVolume(sf, 0, 0.9f);//set to 0.9 and apply Master volume later
 	sfSetProgram();
 }
 
@@ -2638,13 +2639,13 @@ void Track::sfReset(void)
 {
 	if (_trackSf != nullptr)
 	{
-		auto* sf=static_cast<tsf*>(_trackSf);
-		const auto preset=tsf_channel_get_preset_index(sf,0),bank=tsf_channel_get_preset_bank(sf,0);
-		tsf_channel_sounds_off_all(sf,0);
-		tsf_reset(sf);
-		tsf_channel_set_presetindex(sf,0,preset);
-		tsf_channel_set_bank(sf,0,bank);
-		tsf_channel_set_volume(sf,0,0.9f);
+		auto* sf=static_cast<SF2::Synth*>(_trackSf);
+		const auto preset=SF2::presetIndex(sf,0),bank=SF2::bank(sf,0);
+		SF2::allSoundsOff(sf,0);
+		SF2::reset(sf);
+		SF2::setPresetIndex(sf,0,preset);
+		SF2::setBank(sf,0,bank);
+		SF2::setVolume(sf,0,0.9f);
 		igniteReverb.reset(); _Chorus[0].reset(); filter.reset();
 		for(auto& eq:eqFilter) eq.reset();
 	}
@@ -2654,7 +2655,7 @@ void Track::useDesktopSoundFont(std::shared_ptr<void> font)
 {
     unloadDesktopSoundFont();
     desktopFontSource=std::move(font);
-    _trackSf=tsf_copy(static_cast<tsf*>(desktopFontSource.get()));
+    _trackSf=SF2::copy(static_cast<SF2::Bank*>(desktopFontSource.get()));
     sfInit();
 }
 
@@ -2676,20 +2677,20 @@ void Track::sfNoteOn(uint8_t channel, uint8_t key, float velocity)
 {
 	if (_trackSf == nullptr || !desktopPresetValid)
 		return;
-	tsf_channel_note_on(static_cast<tsf*>(_trackSf), channel, key, velocity);
+	SF2::noteOn(static_cast<SF2::Synth*>(_trackSf), channel, key, velocity);
 }
 
 void Track::sfNoteOff(uint8_t channel, uint8_t key)
 {
 	if (_trackSf == nullptr)
 		return;
-	tsf_channel_note_off(static_cast<tsf*>(_trackSf), channel, key);
+	SF2::noteOff(static_cast<SF2::Synth*>(_trackSf), channel, key);
 }
 
 void Track::sfHandleMidi(const juce::MidiMessage& message)
 {
     if (!_trackSf) return;
-    auto* sf=static_cast<tsf*>(_trackSf);
+    auto* sf=static_cast<SF2::Synth*>(_trackSf);
     const int size=message.getRawDataSize();
     // Every track owns an independent synth, so its routed channel maps to zero.
     if (size>=3 && message.isNoteOn()) sfNoteOn(0,uint8_t(message.getNoteNumber()),message.getFloatVelocity());
@@ -2697,20 +2698,22 @@ void Track::sfHandleMidi(const juce::MidiMessage& message)
     else if (size>=3 && message.isController())
     {
         const int cc=message.getControllerNumber();
-        tsf_channel_midi_control(sf,0,cc,message.getControllerValue());
+        SF2::control(sf,0,cc,message.getControllerValue());
+#if !IGNITE_FULL_SF2
         if (cc==7 || cc==39 || cc==11 || cc==43 || cc==121)
-            tsf_channel_set_volume(sf,0,tsf_channel_get_volume(sf,0)*0.9f);
+            SF2::setVolume(sf,0,SF2::volume(sf,0)*0.9f);
+#endif
         if (cc==120)
         {
             igniteReverb.reset(); _Chorus[0].reset(); filter.reset();
             for(auto& eq:eqFilter) eq.reset();
         }
     }
-    else if (size>=3 && message.isPitchWheel()) tsf_channel_set_pitchwheel(sf,0,message.getPitchWheelValue());
+    else if (size>=3 && message.isPitchWheel()) SF2::pitchWheel(sf,0,message.getPitchWheelValue());
     else if (size>=2 && message.isProgramChange())
-        desktopPresetValid=tsf_channel_set_bank_preset(sf,0,tsf_channel_get_preset_bank(sf,0),message.getProgramChangeNumber())!=0;
-    else if (size>=2 && message.isChannelPressure()) tsf_channel_set_pressure(sf,0,message.getChannelPressureValue());
-    else if (size>=3 && message.isAftertouch()) tsf_channel_set_key_pressure(sf,0,message.getNoteNumber(),message.getAfterTouchValue());
+        desktopPresetValid=SF2::setBankPreset(sf,0,SF2::bank(sf,0),message.getProgramChangeNumber())!=0;
+    else if (size>=2 && message.isChannelPressure()) SF2::pressure(sf,0,message.getChannelPressureValue());
+    else if (size>=3 && message.isAftertouch()) SF2::keyPressure(sf,0,message.getNoteNumber(),message.getAfterTouchValue());
 }
 
 void Track::sfSynthesizeAudio(int frames)
@@ -2720,7 +2723,7 @@ void Track::sfSynthesizeAudio(int frames)
     for(int ch=0;ch<audioChannels;++ch) channels[ch]=_twentyMsBuffer+ch*frames;
     audioBuff=juce::AudioBuffer<float>(channels,audioChannels,frames);
     if(!_trackSf) {audioBuff.clear();return;}
-    tsf_render_float(static_cast<tsf*>(_trackSf),_twentyMsBuffer,frames,0);
+    SF2::render(static_cast<SF2::Synth*>(_trackSf),_twentyMsBuffer,frames,0);
     processInternalEffects();
 }
 
@@ -2778,7 +2781,7 @@ void Track::sfSetProgram(void)
 		{
 			preset = index;
 		}
-		desktopPresetValid = tsf_channel_set_bank_preset(static_cast<tsf*>(_trackSf), 0, bank, preset) != 0;
+		desktopPresetValid = SF2::setBankPreset(static_cast<SF2::Synth*>(_trackSf), 0, bank, preset) != 0;
 	}
 }
 
@@ -2786,7 +2789,7 @@ void Track::sfChangeProgram(void)
 {
 	if (_trackSf == nullptr)
 		return;
-	tsf_channel_note_off_all(static_cast<tsf*>(_trackSf), 0);
+	SF2::allNotesOff(static_cast<SF2::Synth*>(_trackSf), 0);
 	sfSetProgram();
 }
 
@@ -2821,7 +2824,7 @@ void Track::setInternalAudioEffects(uint8_t knobID,float value,bool alternate)
     switch(knobID%8)
     {
         case uint8_t(InternalAudioCC::RELEASE):
-            if(_trackSf) tsf_set_noteReleaseTimeMs(static_cast<tsf*>(_trackSf),int(std::clamp(value,0.0f,1000.0f)));
+            if(_trackSf) SF2::releaseTime(static_cast<SF2::Synth*>(_trackSf),int(std::clamp(value,0.0f,1000.0f)));
             break;
         case uint8_t(InternalAudioCC::FILTER_CUTOFF):
             if(alternate) filter.setMode(value<=12?dsp::LadderFilter<float>::Mode::LPF12:dsp::LadderFilter<float>::Mode::LPF24);
@@ -3742,7 +3745,7 @@ void Track::actionsAtBarBoundary(std::string patternName, int8_t previousTrackBa
 
 void Track::unloadDesktopSoundFont()
 {
-    tsf_close(static_cast<tsf*>(_trackSf));_trackSf=nullptr;
+    SF2::close(static_cast<SF2::Synth*>(_trackSf));_trackSf=nullptr;
     desktopFontSource.reset();desktopLoadedFontPath.clear();
     std::fill_n(_twentyMsBuffer,INTERNAL_AUDIO_20MS_BLOCK_SIZE*audioChannels,0.0f);
 }
@@ -3756,3 +3759,5 @@ void Track::prepareDesktopMonitor()
         if(_trackData->hasDesktopFx)restoreDesktopEffects();
     }
 }
+
+int Track::desktopActiveVoices() const {return SF2::activeVoices(static_cast<SF2::Synth*>(_trackSf));}

@@ -1,3 +1,31 @@
+# IGNITE Desktop v0.3.3-desktop.8
+
+Full SF2 synthesis and a third, touchscreen-focused display mode.
+
+- **Touchscreen** in the toolbar hides all 69 panel controls and fits the live
+  firmware display to the window. Keyboard and mapped inputs remain available.
+  The small mode/settings toolbar lets you return to Hardware or Compact.
+  Layout choices persist; `--touchscreen` or launcher `-Layout Touchscreen`
+  provides a temporary override.
+- Windows synthesis now uses **FluidSynth 2.6.1**: instrument/preset modulators,
+  global/local/default overrides, source curves and amount sources, pressure,
+  native reverb/chorus sends, linked stereo and 24-bit SF2 samples.
+- Shared banks retain independent track voices/controllers, saved per-instrument
+  assignments, release controls, polyphony settings and the existing panel effects.
+  Engine defaults can change levels/timbre compared with older versions; check
+  saved mixes after upgrading. SF3 compressed banks are not enabled.
+- Fixed active-voice termination/controller preservation and synth shutdown order
+  found during regression testing. Added 31 native SF2 compatibility checks and
+  expanded display-mode coverage to 111 checks.
+- Updated manual, screenshots and source/license packaging. Release archives include
+  corresponding FluidSynth LGPL source and rebuild/relink instructions. Supply
+  your own SF2 banks; no sample libraries are included.
+
+Release/Debug/AddressSanitizer builds and native checks pass, including 31 new
+SF2 compatibility checks per build. Release and ASan application suites pass:
+111 layout, 99 sound, 107 MIDI/save/editor, 131 MIDI song, 93 media, 75 features
+and 107 workflow checks. The packaged engine source rebuilds and passes its tests.
+
 # IGNITE Desktop v0.3.3-desktop.7
 
 MIDI sustain, channel-mode and routing fidelity fixes.

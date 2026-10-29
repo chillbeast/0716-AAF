@@ -14,11 +14,11 @@ $results=@()
 try {
     $env:IGNITE_DATA_DIR=$data
     $env:IGNITE_SOUNDFONT=$font
-    foreach($phase in @('test','verify','override')) {
+    foreach($phase in @('test','verify','override','compact-override','touchscreen-override')) {
         $env:IGNITE_LOG=Join-Path $runRoot "$phase.log"
         $env:IGNITE_LAYOUT_SNAPSHOTS=Join-Path $runRoot 'snapshots'
-        $env:IGNITE_EXPECT_LAYOUT=if($phase -eq 'verify'){'compact'}else{'hardware'}
-        $arguments=if($phase -eq 'test'){'--layout-test'}elseif($phase -eq 'verify'){'--layout-verify'}else{'--layout-verify --hardware'}
+        $env:IGNITE_EXPECT_LAYOUT=if($phase -eq 'verify' -or $phase -eq 'touchscreen-override'){'touchscreen'}elseif($phase -eq 'compact-override'){'compact'}else{'hardware'}
+        $arguments=if($phase -eq 'test'){'--layout-test'}elseif($phase -eq 'verify'){'--layout-verify'}elseif($phase -eq 'compact-override'){'--layout-verify --compact'}elseif($phase -eq 'touchscreen-override'){'--layout-verify --touchscreen'}else{'--layout-verify --hardware'}
         $process=Start-Process -FilePath $exe -ArgumentList $arguments -WorkingDirectory (Split-Path -Parent $exe) -WindowStyle Hidden -PassThru
         $exited=$process.WaitForExit($TimeoutSeconds*1000)
         $result=[ordered]@{phase=$phase;exited=$exited;exitCode=$null;log=$env:IGNITE_LOG}

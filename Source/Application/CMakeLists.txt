@@ -34,6 +34,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 #Compile commands, useful for some IDEs like VS-Code
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
+if(WIN32)
+    include(cmake/FluidSynth.cmake)
+endif()
+
 #Adds all the module sources so they appear correctly in the IDE
 set_property(GLOBAL PROPERTY USE_FOLDERS YES)
 option(JUCE_ENABLE_MODULE_SOURCE_GROUPS "Enable Module Source Groups" ON)

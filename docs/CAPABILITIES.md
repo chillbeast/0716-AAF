@@ -1,8 +1,8 @@
 # IGNITE capability map
 
-Baseline: upstream `0371a3ea22fc530e23e2321068a0b8835e1e6502`, application version **0.3.3**, inspected 2026-10-28. This distinguishes source capabilities from tested behavior; it is not a claim that every hardware feature has been validated.
+Baseline: upstream `0371a3ea22fc530e23e2321068a0b8835e1e6502`, application version **0.3.3**, inspected 2026-10-29. This distinguishes source capabilities from tested behavior; it is not a claim that every hardware feature has been validated.
 
-The desktop simulator offers **Compact** and **Hardware** layouts. Compact gives the live firmware touchscreen most of the window, with all 69 original panel controls retained. The toolbar switches layouts and remembers the choice; startup sizing fits the monitor work area. See the [manual](manual/USER_MANUAL.md).
+The desktop simulator offers **Hardware**, **Compact** and **Touchscreen** layouts. Touchscreen hides the physical controls and expands the live firmware display, with a small mode/settings toolbar and keyboard/mapped input retained. Compact gives the live firmware touchscreen most of the window, with all 69 original panel controls retained. The toolbar switches layouts and remembers the choice; startup sizing fits the monitor work area. See the [manual](manual/USER_MANUAL.md).
 
 ## Sequencing
 
@@ -22,17 +22,18 @@ The desktop simulator offers **Compact** and **Hardware** layouts. Compact gives
 
 ## Internal sound engine
 
-The running application uses a modified **TinySoundFont** implementation in `modules/Firmware/Application/Model/tsf.h`, instantiated by `SongManager` and copied by `Common/Modules/Track.cpp`. It does **not** link the bundled `AudIO` library in its main target. The older `CSoundFontEngine` wrapper is compiled as stubs; finding a feature in AudIO does not establish that IGNITE exposes it.
+The Windows application uses **FluidSynth 2.6.1**, adapted by `SoundFontRuntime.h` and instantiated by `SongManager`/`Track`. Banks share immutable samples/modulators while tracks own independent synth state. Firmware/non-Windows builds retain the modified TinySoundFont backend. It does **not** link the bundled `AudIO` library in its main target. The older `CSoundFontEngine` wrapper is compiled as stubs; finding a feature in AudIO does not establish that IGNITE exposes it.
 
 | Property | Current source behavior |
 |---|---|
-| Bank format | SoundFont 2 (`.sf2`), loaded from a file. SF3 support is not established. |
+| Bank format | SoundFont 2 (`.sf2`), loaded from a file. SF3 compressed fonts are not enabled. |
 | Voice limit | Windows default: 32 voices per track, configurable to 8/16/32/64/128. Presets can use multiple voices per note; maximum aggregate polyphony is not a real-time performance guarantee. |
 | Audio format | Windows stereo synthesis/effects at 48 kHz, 32-bit float, resampled to the device rate. Stereo channel histories remain independent; mono output uses a downmix. |
 | Render quantum | Live rendering uses 960 samples / 20 ms. The desktop adapter preserves samples across arbitrary driver buffer sizes; offline export also supports shorter blocks for exact timing. |
 | Program selection | Original GM programs plus a desktop browser enumerating actual preset names, banks and programs, with preview and saved custom assignments. A default SF2 and per-instrument SF2 assignments coexist, with sample data shared by path. |
 | Controls | Release, cutoff, resonance, volume, reverb, chorus, EQ high and EQ low; alternate functions and track-value transforms are present. |
-| Effects | JUCE reverb, chorus, EQ/filter/gain processing in `Track`; five effect-order slots. Track effect values save with songs and restore after reopening/synth reconstruction. The much larger Airwindows collection in AudIO is not automatically available in the IGNITE UI. |
+| SF2 compatibility | Instrument/preset modulators, global/local precedence, standard defaults and overrides, source curves/amount sources, linked stereo and 24-bit samples. Generated banks exercise actual rendered responses. |
+| Effects | Native SF2 reverb/chorus sends followed by JUCE reverb, chorus, EQ/filter/gain processing in `Track`; five effect-order slots. Track effect values save with songs and restore after reopening/synth reconstruction. The much larger Airwindows collection in AudIO is not automatically available in the IGNITE UI. |
 | Missing bank | This branch disables internal sound safely; the public baseline dereferenced failed font loads. |
 
 The local library scan found **1,094 SF2 files**. `CT4MGM.SF2` has **329 presets**, all **128 GM bank-0 programs**, and **10 bank-128 drum presets**. A native probe rendered piano, fingered bass, strings, square lead and a standard-kit kick to finite, non-silent audio. The bank is loaded from the user's sample library and is not included in the repository.
@@ -74,7 +75,7 @@ Desktop.4 adds stereo/effects, configurable polyphony and persistent per-instrum
 | Export isolation | Snapshot includes unsaved edits; a child engine renders without live clock, audio-device or MIDI access. Cancellation, child failure and locked destination preserve an existing output. |
 | Performance boundary | Main patterns only; live fill/Sculpt/input actions are not captured. Random directions generate a fresh pass. Scene boundaries release notes; only the final scene has a WAV tail. |
 
-Complete SoundFont modulator compatibility, a working Ignite VST and physical MIDI/CV/clock qualification remain outstanding.
+A working Ignite VST and physical MIDI/CV/clock qualification remain outstanding. SF2 modulator compatibility is implemented in desktop.8.
 
 ## Arranged MIDI songs (desktop.6)
 
@@ -82,4 +83,4 @@ Type 0/1 PPQ MIDI imports as a new song, with assigned named parts, tempo/meter/
 
 Notes/events round to 48 ticks/quarter; scene boundaries round to sixteenths and crossing notes retrigger. Meters that exceed the global-bar model retain MIDI metadata with a normalised internal bar grid. SysEx, SMPTE and type 2 independent sequences are not imported. Resource and scene/library limits are validated before song creation. The 103-check setup/song/round-trip/reopen suite covers generated MIDI/SF2 fixtures and actual exported MIDI/audio; see [DEVELOPMENT.md](DEVELOPMENT.md).
 
-Desktop.7 expands that suite to 131 checks, adding pedal-held note reconstruction, channel-mode release/termination, RPN/NRPN ordering and reset, overlapping clip notes and port/zero-tempo validation. Pedal-held notes are recreated until release in later scenes; envelopes and effect tails are not continuous. External-only MIDI export now includes logical ports without requiring program initialization, and the media suite totals 93 checks. Re-import earlier MIDI sources to apply the conversion changes. Hardware qualification, complete SF2 modulators and a working VST remain separate outstanding work.
+Desktop.7 expands that suite to 131 checks, adding pedal-held note reconstruction, channel-mode release/termination, RPN/NRPN ordering and reset, overlapping clip notes and port/zero-tempo validation. Pedal-held notes are recreated until release in later scenes; envelopes and effect tails are not continuous. External-only MIDI export now includes logical ports without requiring program initialization, and the media suite totals 93 checks. Re-import earlier MIDI sources to apply the conversion changes. Hardware qualification and a working VST remain separate outstanding work. Desktop.8 implements SF2 modulators using FluidSynth.

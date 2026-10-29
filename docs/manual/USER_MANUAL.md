@@ -1,10 +1,10 @@
 ﻿# IGNITE Desktop Simulator
 
-**User manual · Community release v0.3.3-desktop.7 · 29 October 2026**
+**User manual · Community release v0.3.3-desktop.8 · 29 October 2026**
 
-IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with compact and hardware layouts, plus desktop audio, MIDI, SoundFont and backup controls. Both layouts run the actual firmware touchscreen and the same panel controls.
+IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with Hardware, Compact and Touchscreen layouts, plus desktop audio, MIDI, SoundFont and backup controls. All modes run the actual firmware touchscreen.
 
-This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.7` identifies this community release.
+This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.8` identifies this community release.
 
 ![IGNITE simulator compact layout with a large live touchscreen](../images/ignite-compact.png)
 
@@ -27,7 +27,7 @@ This is an independent community build of Music Tribe's open-source release. It 
 
 ## 1. Install and launch
 
-Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.7). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
+Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.8). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
 
 The package is portable and does not require an installer, Visual Studio or a Python installation to run. Development tools are needed only to rebuild it. A working Windows audio output is required to hear internal sound. Supply your own `.sf2` SoundFont; sample banks are not included.
 
@@ -35,13 +35,15 @@ For a shortcut, right-click the extracted `Ignite.exe` and choose **Show more op
 
 Open **Desktop settings** in the top toolbar, or press **Ctrl+,**. This is separate from the firmware's own Settings screen in MENU. Desktop Settings contains **Audio**, **MIDI**, **SoundFonts** and **Projects** tabs.
 
-For a larger touchscreen without the surrounding panel, launch `Ignite.exe --touchscreen` from PowerShell or add `--touchscreen` to a shortcut's target arguments. Ctrl+, still opens Desktop Settings.
+Select **Touchscreen** in the toolbar, or launch `Ignite.exe --touchscreen` from PowerShell or add `--touchscreen` to a shortcut's target arguments. Ctrl+, still opens Desktop Settings.
 
 ## 2. The panel and keyboard
 
-Use **Compact** or **Hardware** in the top toolbar to choose the layout. Compact is the default: most of the window is the touchscreen, with closely spaced controls on the right and a strip of step encoders/pads below. Hardware restores the vector product faceplate. The layout choice is remembered for the next launch; switching keeps the same screen, song and controls active.
+Use **Hardware**, **Compact** or **Touchscreen** in the top toolbar to choose the layout. Compact is the default: most of the window is the touchscreen, with closely spaced controls on the right and a strip of step encoders/pads below. Hardware restores the vector product faceplate. Touchscreen hides every hardware control and expands the live display to the available window area, preserving its aspect ratio. The small mode/settings toolbar remains, and keyboard and mapped MIDI/remote controls continue to work. The layout choice is remembered for the next launch; switching keeps the same screen, song and controls active.
 
 The initial window fits the monitor's usable desktop area. Resize or maximise it to give the screen more room. Compact preserves the touchscreen's aspect ratio and adapts the control spacing to smaller windows, including common laptop desktop sizes. The layout tests cover 960×540, 960×600, 1280×720 and 1366×768 content sizes. On very small or heavily scaled displays, touchscreen text will still be smaller than its native size.
+
+![IGNITE simulator touchscreen mode with panel controls hidden](../images/ignite-touchscreen.png)
 
 ![IGNITE hardware layout, selectable without restarting](../images/ignite-simulator.png)
 
@@ -162,7 +164,7 @@ The default bank path is remembered in Windows preferences. Explicit instrument 
 
 | Engine property | Current behavior |
 |---|---|
-| Bank format | SF2. SF3 support is not established. |
+| Bank format | SF2. SF3 compressed fonts are not enabled. |
 | Bank assignment | One default SF2 plus optional per-instrument SF2 paths; sample data is cached and shared by path. |
 | Voices | 32 per track by default. Choose 8, 16, 32, 64 or 128 in the SoundFonts tab. Layered/stereo presets can consume several voices per note. The setting applies to every track and changing it stops playback. |
 | Synthesis | Stereo, 48 kHz, including MIDI pan and stereo effects. Resampled to the Windows device rate; a mono device receives a downmix. |
@@ -170,6 +172,8 @@ The default bank path is remembered in Windows preferences. Explicit instrument 
 | Failed replacement load | Retains the previously loaded bank. |
 
 No commercial SoundFonts are bundled. Use files whose license permits your intended use. This release also does not expose the entire separate AudIO/Airwindows effect collection through the firmware UI.
+
+Windows SF2 synthesis now uses **FluidSynth 2.6.1**. Instrument and preset modulators include source curves, amount-source controllers, global/local precedence and replacement of standard default modulators. Bank-specified reverb/chorus sends run inside the SF2 engine before the panel effects. Linked stereo and 24-bit SF2 sample data are supported. Tracks sharing a bank keep independent voices and MIDI controllers. Native SF2 defaults can change levels or timbre relative to earlier releases; check saved mixes after upgrading. Unsupported or structurally invalid banks report a load failure and leave the prior assignment intact.
 
 ## 8. Windows audio
 
@@ -200,7 +204,7 @@ The interface uses channels 1–16; internal data stores them as 0–15. A chann
 
 Routes and the monitoring option save automatically. If startup reports a missing device, reconnect it, refresh and select the route again. Avoid routing an output back to its own input unless you deliberately want that loop and have configured filtering.
 
-The internal synth handles sustain (CC64), channel volume (CC7/39), expression (CC11/43), bank select (CC0/32) plus program change, pitch bend and RPN bend range, modulation wheel, channel pressure and polyphonic pressure. Modulation and pressure add a basic vibrato mapping; this is not a complete SoundFont modulator-matrix implementation. Controllers are scoped to the routed track. CC121 resets expression, sustain, bend position, modulation and pressure while retaining volume, pan and the chosen bank/program. CC123 releases notes subject to sustain; CC120 stops sound immediately and clears the track effects. Panic clears notes and leaves the synth playable.
+The internal synth handles sustain (CC64), channel volume (CC7), expression (CC11), bank select (CC0/32) plus program change, pitch bend and RPN bend range, modulation wheel, channel pressure and polyphonic pressure. Modulation and pressure follow the SF2 defaults and the bank's own modulators. Controllers are scoped to the routed track. CC121 resets expression, sustain, bend position, modulation and pressure while retaining volume, pan and the chosen bank/program. CC123 releases notes subject to sustain; CC120 stops sound immediately and clears the track effects. Panic clears notes and leaves the synth playable.
 
 No MIDI input devices were connected for release testing. Internal messages exercised the same router entry point and all 16 logical port IDs; physical controllers, driver behavior, external output and external-clock timing remain unverified.
 
@@ -332,7 +336,7 @@ For a file log, set `IGNITE_LOG` to a writable path before launch. Source-checko
 | Incomplete device distribution | MCU firmware, Wi-Fi firmware and the proprietary PC transfer service were omitted upstream. A complete flashable image is not supplied. |
 | Known desktop limitation | Debug retains UI allocations and reports them slowly at exit. The shared model lock can cause brief audio gaps during edits/saves. |
 
-The synth has a configurable voice limit; complete SoundFont modulator-matrix support is still incomplete. This simulator is not an emulation of the MCU, electrical I/O or device storage hardware. The optional VST source is a template, not an Ignite plugin supplied by this release.
+The Windows synth uses FluidSynth for SF2 modulation, preset effects, linked stereo and 24-bit samples, with a configurable voice limit. SF3 compressed banks are not enabled. This simulator is not an emulation of the MCU, electrical I/O or device storage hardware. The optional VST source is a template, not an Ignite plugin supplied by this release.
 
 ## 14. Developer and release reference
 
@@ -355,8 +359,8 @@ See [Windows build instructions](../BUILD_WINDOWS.md) for Visual Studio, CMake, 
 .\scripts\workflow-windows.ps1 -Configuration Release -NodeEdit -AudioDevice -SimulateInterruptedSave
 ```
 
-Tests use disposable directories under the ignored build tree. Verification covers **84 native Release/ASan checks**, **85 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **61 layout checks**, **99 stereo/effects/multi-bank checks**, **93 media setup/export/import/reopen checks**, **131 MIDI song setup/import/round-trip/reopen checks**, **91 no-font workflow checks under ASan**, and **seven smoke checks per font/no-font case**. The unchanged packet protocol previously passed five checks. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
+Tests use disposable directories under the ignored build tree. Verification covers **84 native Release/ASan checks**, **85 native Debug checks**, **31 full-SF2 compatibility checks in each build**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **111 layout checks**, **99 stereo/effects/multi-bank checks**, **93 media setup/export/import/reopen checks**, **131 MIDI song setup/import/round-trip/reopen checks**, **91 no-font workflow checks under ASan**, and **seven smoke checks per font/no-font case**. The unchanged packet protocol previously passed five checks. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
 
-The separate AudIO, DAW and Airwindows libraries also build, but the main app uses its firmware TinySoundFont path. Detailed evidence and remaining audit items are in [AUDIT_FIXES.md](../AUDIT_FIXES.md), [CAPABILITIES.md](../CAPABILITIES.md) and [DEVELOPMENT.md](../DEVELOPMENT.md).
+The separate AudIO, DAW and Airwindows libraries also build, but the Windows app uses embedded FluidSynth 2.6.1; non-Windows firmware retains TinySoundFont. See [third-party notices](../THIRD_PARTY_NOTICES.md) for the included LGPL license, corresponding engine source and rebuild/relink instructions. Detailed evidence and remaining audit items are in [AUDIT_FIXES.md](../AUDIT_FIXES.md), [CAPABILITIES.md](../CAPABILITIES.md) and [DEVELOPMENT.md](../DEVELOPMENT.md).
 
 Application and community code retain the upstream AGPL-3.0-or-later license and third-party notices. Behringer, IGNITE and Music Tribe names remain their owners' trademarks. See the repository LICENSE and upstream [trademark policy](https://github.com/MusicTribeOpenSource/.github/blob/main/TRADEMARKS.md).

@@ -20,13 +20,25 @@ New-Item -ItemType Directory -Path $source -Force|Out-Null
 $files=& git -C $repo ls-files --cached --others --exclude-standard -- Source/Application ComProtocol AudIO scripts docs README.md RELEASE_NOTES.md LICENSE .gitignore
 if($LASTEXITCODE -ne 0){throw 'Could not enumerate corresponding source files.'}
 foreach($relative in $files) {
-    if([IO.Path]::GetExtension($relative) -ieq '.sf2'){continue}
+    if([IO.Path]::GetExtension($relative).ToLowerInvariant() -in @('.sf2','.sf3','.dls')){continue}
     $origin=Join-Path $repo $relative
     if(!(Test-Path -LiteralPath $origin -PathType Leaf)){continue}
     $target=Join-Path $source $relative
     New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force|Out-Null
     Copy-Item -LiteralPath $origin -Destination $target
 }
+# The statically linked LGPL engine needs its corresponding source and rebuild
+# path in the distribution, including any populated source submodules.
+$cache=Get-Content -LiteralPath (Join-Path $build 'win/CMakeCache.txt')
+$engineLine=$cache|Where-Object {$_ -like 'IGNITE_FLUIDSYNTH_SOURCE_DIR:PATH=*'}|Select-Object -First 1
+if(!$engineLine){throw 'The Release build does not identify its SoundFont engine source.'}
+$engineSource=$engineLine.Substring($engineLine.IndexOf('=')+1)
+if(!(Test-Path -LiteralPath (Join-Path $engineSource 'LICENSE'))){throw 'Missing FluidSynth corresponding source/license.'}
+$engineTarget=Join-Path $source 'Source/Application/third_party/fluidsynth'
+New-Item -ItemType Directory -Path $engineTarget -Force|Out-Null
+& python (Join-Path $PSScriptRoot 'package_engine_source.py') $engineSource $engineTarget
+if($LASTEXITCODE -ne 0){throw 'Could not package the corresponding SoundFont engine source.'}
+Copy-Item -LiteralPath (Join-Path $engineSource 'LICENSE') -Destination (Join-Path $destination 'FluidSynth-LICENSE.txt')
 @'
 IGNITE desktop simulator
 
@@ -34,6 +46,8 @@ Run Ignite.exe. Choose DESKTOP SETTINGS (or Ctrl+,) for audio, MIDI routing,
 SoundFont loading/preview, WAV/stem and MIDI export, MIDI song/clip import,
 and project backup ZIP export/restore. Stop playback before media export.
 Supply your own .sf2 bank; no private sample libraries are included.
+Choose Hardware, Compact or Touchscreen in the top toolbar. Touchscreen hides
+the panel controls while keeping keyboard and mapped hardware input available.
 The app stores user data under %APPDATA%\BehringerIgnite.
 
 Read docs/manual/USER_MANUAL.html or docs/manual/USER_MANUAL.pdf.
@@ -43,6 +57,10 @@ The editable faceplate is assets/ignite-panel.svg.
 Corresponding application and library source is included under source/.
 Build commands are in source/scripts/build-windows.ps1 and docs/BUILD_WINDOWS.md.
 JUCE 7.0.12 is fetched by CMake and the included multitouch patch is applied.
+FluidSynth 2.6.1 (LGPL-2.1-or-later) is statically linked. Its corresponding
+source is source/Source/Application/third_party/fluidsynth; the included build
+scripts automatically use that copy, allowing changes and relinking.
+See docs/THIRD_PARTY_NOTICES.md and FluidSynth-LICENSE.txt.
 Upstream: https://github.com/MusicTribeOpenSource/0716-AAF
 Community fork: https://github.com/chillbeast/0716-AAF
 This is a local community desktop build, not a device firmware image.
@@ -50,7 +68,7 @@ This is a local community desktop build, not a device firmware image.
 $sourceCommit=& git -C $repo rev-parse HEAD
 if($LASTEXITCODE -ne 0){throw 'Could not identify the source commit.'}
 $localChanges=[bool](& git -C $repo status --porcelain --untracked-files=normal)
-$metadata=[ordered]@{createdUtc=(Get-Date).ToUniversalTime().ToString('o');version=$Version;firmwareVersion='0.3.3';repository='https://github.com/chillbeast/0716-AAF';upstream='https://github.com/MusicTribeOpenSource/0716-AAF';upstreamCommit='0371a3ea22fc530e23e2321068a0b8835e1e6502';sourceCommit=$sourceCommit;localChanges=$localChanges;executableSha256=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash;configuration='Release';includesSoundFont=$false;sourceDirectory='source'}
+$metadata=[ordered]@{createdUtc=(Get-Date).ToUniversalTime().ToString('o');version=$Version;firmwareVersion='0.3.3';repository='https://github.com/chillbeast/0716-AAF';upstream='https://github.com/MusicTribeOpenSource/0716-AAF';upstreamCommit='0371a3ea22fc530e23e2321068a0b8835e1e6502';sourceCommit=$sourceCommit;localChanges=$localChanges;executableSha256=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash;configuration='Release';includesSoundFont=$false;sourceDirectory='source';soundFontEngine='FluidSynth 2.6.1';soundFontEngineCommit='71e85b2ca6bf48641ba7e2261d8f2640ae473773';soundFontEngineSource='source/Source/Application/third_party/fluidsynth'}
 $metadata|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $destination 'BUILD.json') -Encoding UTF8
 $zip=$destination+'.zip'
 & python (Join-Path $PSScriptRoot 'package_zip.py') $destination $zip
