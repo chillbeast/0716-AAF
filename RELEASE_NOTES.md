@@ -1,3 +1,17 @@
+# IGNITE Desktop v0.3.3-desktop.2
+
+Compact layout gives the firmware touchscreen most of the window, with the original buttons, knobs and pads arranged closely along the right and bottom. Use the **Compact / Hardware** toolbar to switch without restarting or changing the selected song. Compact is the default and the choice is remembered.
+
+- Initial sizing fits the monitor work area; resizing keeps the compact screen's original aspect ratio. Small content sizes are covered down to 960×540 for scaled desktops.
+- Both layouts share all 69 controls and the original touchscreen instance. Keyboard shortcuts remain available after using the toolbar.
+- `--compact` / `--hardware` and the launcher's `-Layout` option provide temporary overrides without changing the saved preference.
+- Desktop Settings is accessible from the top toolbar in either layout. The illustrated Markdown/HTML/PDF manual now covers both layouts.
+- Layout regression checks exercise toolbar switching, repeated changes, geometry, selected-song/screen lifetime, navigation, SHIFT and saved/overridden preferences across processes. Existing audio, MIDI, SoundFont and backup features are retained.
+
+Release and Debug simulator builds succeeded. The three-process layout suite passes **61 checks in Release and under AddressSanitizer**. The 75-check desktop feature suite is rerun with the new default layout, covering internal MIDI recording, custom SoundFonts and backup/restore. No physical MIDI or CV validation is claimed.
+
+Download **Ignite-Desktop-v0.3.3-desktop.2-windows-x64.zip**, extract it and run **Ignite.exe**. The package includes corresponding source and the manual. Supply your own SF2. This remains a community preview with the hardware and Debug limitations listed below for desktop.1.
+
 # IGNITE Desktop v0.3.3-desktop.1
 
 First community Windows x64 preview of the IGNITE firmware application, based on upstream `0371a3ea22fc530e23e2321068a0b8835e1e6502`. The application identifies itself as firmware version 0.3.3. This desktop release is independent of Behringer and Music Tribe.

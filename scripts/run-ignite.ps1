@@ -2,7 +2,8 @@ param(
     [ValidateSet('Release', 'Debug')][string]$Configuration = 'Release',
     [string]$SoundFont = '',
     [string]$DataDirectory = '',
-    [switch]$Touchscreen
+    [switch]$Touchscreen,
+    [ValidateSet('Hardware','Compact')][string]$Layout
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -30,6 +31,7 @@ try {
     $env:IGNITE_LOG = Join-Path $build 'ignite.log'
     $launch = @{ FilePath = $exe; WorkingDirectory = (Split-Path -Parent $exe); PassThru = $true }
     if ($Touchscreen) { $launch.ArgumentList = '--touchscreen' }
+    elseif ($Layout) { $launch.ArgumentList = '--'+$Layout.ToLowerInvariant() }
     $process = Start-Process @launch
     Write-Output "IGNITE started (PID $($process.Id)). Log: $env:IGNITE_LOG"
 } finally {

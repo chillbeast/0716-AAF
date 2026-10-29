@@ -1,12 +1,12 @@
 ﻿# IGNITE Desktop Simulator
 
-**User manual · Community release v0.3.3-desktop.1 · 28 October 2026**
+**User manual · Community release v0.3.3-desktop.2 · 28 October 2026**
 
-IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with an interactive hardware faceplate and desktop audio, MIDI, SoundFont and backup controls. The faceplate is vector artwork and stays sharp when resized; its touchscreen runs the actual firmware UI.
+IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with compact and hardware layouts, plus desktop audio, MIDI, SoundFont and backup controls. Both layouts run the actual firmware touchscreen and the same panel controls.
 
-This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.1` identifies this community release.
+This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.2` identifies this community release.
 
-![IGNITE simulator with its live touchscreen and interactive vector panel](../images/ignite-simulator.png)
+![IGNITE simulator compact layout with a large live touchscreen](../images/ignite-compact.png)
 
 ## Contents
 
@@ -27,17 +27,23 @@ This is an independent community build of Music Tribe's open-source release. It 
 
 ## 1. Install and launch
 
-Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.1). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
+Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.2). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
 
 The package is portable and does not require an installer, Visual Studio or a Python installation to run. Development tools are needed only to rebuild it. A working Windows audio output is required to hear internal sound. Supply your own `.sf2` SoundFont; sample banks are not included.
 
 For a shortcut, right-click the extracted `Ignite.exe` and choose **Show more options → Send to → Desktop (create shortcut)**. Moving the extracted folder later requires updating that shortcut. An existing source-checkout shortcut may instead launch `scripts/run-ignite.ps1`.
 
-Open **DESKTOP SETTINGS** below the faceplate, or press **Ctrl+,**. This is separate from the firmware's own Settings screen in MENU. Desktop Settings contains **Audio**, **MIDI**, **SoundFonts** and **Projects** tabs.
+Open **Desktop settings** in the top toolbar, or press **Ctrl+,**. This is separate from the firmware's own Settings screen in MENU. Desktop Settings contains **Audio**, **MIDI**, **SoundFonts** and **Projects** tabs.
 
 For a larger touchscreen without the surrounding panel, launch `Ignite.exe --touchscreen` from PowerShell or add `--touchscreen` to a shortcut's target arguments. Ctrl+, still opens Desktop Settings.
 
 ## 2. The panel and keyboard
+
+Use **Compact** or **Hardware** in the top toolbar to choose the layout. Compact is the default: most of the window is the touchscreen, with closely spaced controls on the right and a strip of step encoders/pads below. Hardware restores the vector product faceplate. The layout choice is remembered for the next launch; switching keeps the same screen, song and controls active.
+
+The initial window fits the monitor's usable desktop area. Resize or maximise it to give the screen more room. Compact preserves the touchscreen's aspect ratio and adapts the control spacing to smaller windows, including common laptop desktop sizes. The layout tests cover 960×540, 960×600, 1280×720 and 1366×768 content sizes. On very small or heavily scaled displays, touchscreen text will still be smaller than its native size.
+
+![IGNITE hardware layout, selectable without restarting](../images/ignite-simulator.png)
 
 Most panel buttons depend on the current screen and selected object. Start with the mode buttons, then select the song, scene, track or pattern you want to edit.
 

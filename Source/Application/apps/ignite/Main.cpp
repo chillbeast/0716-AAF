@@ -35,6 +35,7 @@ extern IDevice* EngineInit(void);
 #include "DesktopWorkflowTest.h"
 #include "DesktopServices.h"
 #include "DesktopFeatureTest.h"
+#include "DesktopLayoutTest.h"
 
 //==============================================================================
 #define SHOW_BOOT_IMAGE
@@ -134,11 +135,24 @@ public:
         midiRouter->restore();
         mainWindow->showDesktopSettings = [this] { openDesktopSettings(); };
         if (auto* panel = dynamic_cast<DesktopPanel*>(mainWindow->getContentComponent()))
+        {
             panel->showDesktopSettings = [this] { openDesktopSettings(); };
+            if (commandLine.contains("--hardware")) panel->setHardwareLayout(true,false);
+            else if (commandLine.contains("--compact")) panel->setHardwareLayout(false,false);
+        }
 #endif
 		Logger::writeToLog("Engine ready: " + String(_PUiVirtualEngine && _PUiVirtualEngine->isIDeviceReady() ? "yes" : "no"));
 		if (commandLine.contains("--self-test"))
 			Timer::callAfterDelay(2500, [this] { runDesktopSelfTest(0); });
+        if (commandLine.contains("--layout-test") || commandLine.contains("--layout-verify"))
+            Timer::callAfterDelay(2500,[this,commandLine]
+            {
+                auto* panel=dynamic_cast<DesktopPanel*>(mainWindow->getContentComponent());
+                if (!panel) {setApplicationReturnValue(1);quit();return;}
+                layoutTest=std::make_unique<DesktopLayoutTest>(*panel,*static_cast<IgniteEngine*>(_PUiVirtualEngine.get()),commandLine.contains("--layout-verify"),
+                    [this](int width,int height) {mainWindow->setContentComponentSize(width,height);},
+                    [this](int failures) {setApplicationReturnValue(failures?1:0);quit();});
+            });
 		if (commandLine.contains("--workflow-test") || commandLine.contains("--workflow-verify"))
 			Timer::callAfterDelay(2500, [this, commandLine]
 			{
@@ -175,6 +189,7 @@ public:
 
 	void shutdown() override
 	{
+        layoutTest.reset();
         if (desktopSettings) delete desktopSettings.getComponent();
         midiRouter.reset();
 #ifdef _WIN32
@@ -226,9 +241,14 @@ public:
 			{
 				setName("IGNITE Simulator");
 				setContentOwned(new DesktopPanel(), true);
-				setContentComponentSize(1346, 860);
 				setResizable(true, true);
-				setResizeLimits(748, 500, 2244, 1460);
+				auto* display=juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+				const auto area=display ? display->userArea : juce::Rectangle<int>(0,0,1440,960);
+				const int minimumWidth=juce::jmin(960,juce::jmax(748,area.getWidth()-32));
+				const int minimumHeight=juce::jmin(600,juce::jmax(440,area.getHeight()-48));
+				setResizeLimits(minimumWidth,minimumHeight,3840,2160);
+				setContentComponentSize(juce::jmax(minimumWidth,juce::jmin(1346,area.getWidth()-64)),
+					juce::jmax(minimumHeight,juce::jmin(860,area.getHeight()-80)));
 				centreWithSize(getWidth(), getHeight());
 			}
 			else
@@ -364,6 +384,7 @@ private:
         desktopSettings = options.launchAsync();
     }
     std::unique_ptr<IgniteDesktop::MidiRouter> midiRouter;
+    std::unique_ptr<DesktopLayoutTest> layoutTest;
     juce::Component::SafePointer<juce::DialogWindow> desktopSettings;
 	std::unique_ptr<MainWindow> mainWindow;
 	std::unique_ptr<FileLogger> fileLogger;

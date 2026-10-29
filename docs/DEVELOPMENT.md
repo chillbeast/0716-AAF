@@ -68,6 +68,16 @@ This is an initial desktop bring-up, not a completed code audit. Successful test
 
 Debug exit is also a known limitation: after the window and worker threads stop, the retained singleton UI graph produces an enormous CRT allocation leak dump. The debugger-output capture confirmed the exit delay was then in leak reporting, not the joined worker queues. Use Release for smoke tests and normal use; full UI/engine ownership cleanup is still required.
 
+## Compact monitor layout
+
+Desktop.2 adds a default Compact layout alongside the SVG Hardware layout. `DesktopPanel` repositions the existing control objects and transforms the same 1024×600 touchscreen; switching does not create another UI/model instance. All 69 original controls remain present. A fixed toolbar selects either layout and opens Desktop Settings. `PanelLayout` shares the existing `desktop.json` preferences through `DesktopPreferences.h`; command-line overrides do not overwrite the saved selection.
+
+Window startup dimensions account for JUCE's monitor work area, including display scaling. Compact keeps the touchscreen aspect ratio and reduces control spacing at small heights. Layout validation covers 960×540, 960×600, 1280×720 and 1366×768 content sizes, non-overlapping controls, repeated switches, selected-song/screen lifetime, navigation/SHIFT, fresh-process preferences and temporary overrides. Toolbar buttons leave keyboard focus available for firmware shortcuts.
+
+Run `scripts/layout-windows.ps1 -Configuration Release`, or add `-Configuration RelWithDebInfo -BuildDirectory asan` with the sanitizer runtime on PATH. The three-process layout suite passes **46 + 9 + 6 = 61 checks** in Release (`build/layout/20261028-181346`) and ASan (`build/layout/20261028-181226`), relative to `Source/Application`. Release and Debug rebuilds passed. Existing desktop-feature regression coverage is also rerun for this release; see the release notes.
+
+Desktop.2 regression evidence: `build/features/20261028-181501` (75 Release checks), `build/features/20261028-181439` (75 ASan checks), `build/workflow/20261028-181548` (107 Release checks, device audio and interrupted-save recovery), and `build/smoke/20261028-181615` (seven checks with a bank and seven without). All processes exited normally. The final ASan layout/feature runs generated no address-error report.
+
 ## Working conventions
 
 - Keep changes local until publishing is requested. `origin` is Music Tribe upstream; no pushes or upstream pull requests have been made.

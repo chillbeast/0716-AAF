@@ -64,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pdf", action="store_true")
     parser.add_argument("--browser", type=Path)
-    parser.add_argument("--version", default="v0.3.3-desktop.1")
+    parser.add_argument("--version", default="v0.3.3-desktop.2")
     args = parser.parse_args()
     repo = Path(__file__).resolve().parent.parent
     manual = repo / "docs/manual/USER_MANUAL.md"

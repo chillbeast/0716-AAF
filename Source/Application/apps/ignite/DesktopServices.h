@@ -7,20 +7,10 @@
 #include <functional>
 #include "Firmware/Application/Model/SoundFontProgram.h"
 #include "DesktopProjectArchive.h"
+#include "DesktopPreferences.h"
 
 namespace IgniteDesktop
 {
-    inline juce::var readPreferences()
-    {
-        auto value = juce::JSON::parse(Ignite::SongManager::desktopSettingsFile());
-        return value.isObject() ? value : juce::var(new juce::DynamicObject());
-    }
-    inline bool writePreferences(juce::var value)
-    {
-        auto file = Ignite::SongManager::desktopSettingsFile();
-        return file.getParentDirectory().createDirectory().wasOk() && file.replaceWithText(juce::JSON::toString(value));
-    }
-
     class MidiRouter
     {
         struct Input : juce::MidiInputCallback

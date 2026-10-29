@@ -1,6 +1,14 @@
 # Windows desktop features
 
-Open **DESKTOP SETTINGS** below the hardware faceplate, or press **Ctrl+,**. The firmware touchscreen and its normal editing controls remain available alongside these Windows controls.
+Open **Desktop settings** in the top toolbar, or press **Ctrl+,**. The firmware touchscreen and its normal editing controls remain available alongside these Windows controls.
+
+## Monitor layouts
+
+The **Compact / Hardware** toolbar switches between a large touchscreen with closely spaced controls and the SVG hardware faceplate. Compact is the default; your choice is saved as `PanelLayout` in `desktop.json`. The same touchscreen and all 69 controls stay active across switches, including held/latched SHIFT state. The initial window fits the monitor work area, and Compact keeps the touchscreen's original aspect ratio when resized.
+
+![Compact layout with more room for the firmware screen](images/ignite-compact.png)
+
+Use `Ignite.exe --compact` or `--hardware` for a temporary launch override. The source launcher accepts `scripts/run-ignite.ps1 -Layout Compact` or `-Layout Hardware`. These overrides leave the saved choice alone. `--touchscreen` still opens the screen on its own.
 
 ## Audio
 

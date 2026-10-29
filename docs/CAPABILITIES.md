@@ -2,6 +2,8 @@
 
 Baseline: upstream `0371a3ea22fc530e23e2321068a0b8835e1e6502`, application version **0.3.3**, inspected 2026-10-28. This distinguishes source capabilities from tested behavior; it is not a claim that every hardware feature has been validated.
 
+The desktop simulator offers **Compact** and **Hardware** layouts. Compact gives the live firmware touchscreen most of the window, with all 69 original panel controls retained. The toolbar switches layouts and remembers the choice; startup sizing fits the monitor work area. See the [manual](manual/USER_MANUAL.md).
+
 ## Sequencing
 
 | Capability | Source evidence / interpretation |

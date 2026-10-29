@@ -1,6 +1,6 @@
 # Windows desktop build
 
-The `desktop-build` branch runs the IGNITE application and its real firmware model on Windows x64. The simulator adds an interactive SVG hardware faceplate around the live touchscreen. The labels, knobs and controls remain sharp when resized. `--touchscreen` opens only the touchscreen.
+The `desktop-build` branch runs the IGNITE application and its real firmware model on Windows x64. The simulator starts in Compact layout with a large touchscreen and closely spaced panel controls. The toolbar also selects the interactive SVG Hardware layout and remembers your choice. Initial window sizing accounts for the monitor work area. `--touchscreen` opens only the touchscreen.
 
 ## Requirements
 
@@ -31,6 +31,7 @@ The executable is `Source/Application/build/win/apps/ignite/Ignite_artefacts/Rel
 ```powershell
 .\scripts\run-ignite.ps1 -SoundFont 'D:\path\to\your-bank.sf2'
 .\scripts\run-ignite.ps1 -Touchscreen
+.\scripts\run-ignite.ps1 -Layout Compact
 ```
 
 The runner also reads an optional, ignored `Source/Application/build/desktop-settings.json`:
@@ -52,6 +53,7 @@ See [AUDIT_FIXES.md](AUDIT_FIXES.md) for the reliability repairs, AddressSanitiz
 ```powershell
 .\scripts\workflow-windows.ps1 -Configuration Release -NodeEdit -AudioDevice -SimulateInterruptedSave
 .\scripts\features-windows.ps1 -Configuration Release
+.\scripts\layout-windows.ps1 -Configuration Release
 ```
 
 The Windows output may negotiate 44.1 kHz even though the synth runs at 48 kHz. The desktop stream now converts between those rates. Pause and Stop close the output; Play/Resume opens it again. Audio startup failures and the negotiated device format are recorded in the log.
@@ -72,7 +74,7 @@ Debug uses the same build tree with `--config Debug`. The inherited UI retains m
 
 The manual source is `docs/manual/USER_MANUAL.md`. To regenerate its self-contained HTML and PDF, install Python-Markdown (`python -m pip install Markdown`), then run `python scripts/build-manual.py --pdf`. PDF rendering uses an installed Edge/Chrome browser in headless mode with a separate temporary profile; `--browser` selects another Chromium executable. These tools are only needed for documentation development.
 
-After committing the release source, create the versioned Windows package with `scripts/package-windows.ps1 -Version v0.3.3-desktop.1`. It includes the tested Release executable, assets, manual, license, release notes and corresponding source. `BUILD.json` records the source commit, whether the checkout is dirty and the executable SHA-256. The ZIP builder checks its entries and CRCs and refuses included SF2 files.
+After committing the release source, create the versioned Windows package with `scripts/package-windows.ps1 -Version v0.3.3-desktop.2`. It includes the tested Release executable, assets, manual, license, release notes and corresponding source. `BUILD.json` records the source commit, whether the checkout is dirty and the executable SHA-256. The ZIP builder checks its entries and CRCs and refuses included SF2 files.
 
 ## Device build boundary
 
