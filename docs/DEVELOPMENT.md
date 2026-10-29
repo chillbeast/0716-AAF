@@ -126,3 +126,26 @@ Desktop.4 evidence (relative to `Source/Application/build`):
 All listed processes exit normally with no failing checks. The final sanitizer run produces no address-error report. The manual screenshot uses the generated bank-42 fixture and shows the actual revised SoundFonts controls.
 
 The desktop shortcut launcher also permits a missing saved default bank, allowing explicitly assigned banks to work. Mocked launch checks cover missing saved defaults, explicitly invalid paths and valid relative paths without opening another app instance.
+
+## Desktop.5 media verification
+
+The Projects tab now runs song/scene WAV and MIDI exports in a private child engine and imports MIDI clips into the pattern library. New headers are `DesktopMedia{Snapshot,Job,Render,Test}.h` and `DesktopMidiImport.h`. The snapshot preserves unsaved data without saving or mutating the parent; the child has a separate data directory, no live MIDI routing/clock, and inline sequencer pulses. Temporary output replaces the destination only on success. Track effects now persist in song XML. Controller transposition and held notes across bars are repaired.
+
+The 88-check media suite comprises 50 arrangement setup, 33 export/import checks and five fresh-process checks. Original MIDI and stereo SF2 fixtures cover WAV frame counts and format, scene/song export, stems, two-tempo MIDI, unsaved snapshots, parent edit isolation, clip import/save/reopen, failed/cancelled jobs, a locked destination, saved EQ restoration, controller/pressure transpose and notes spanning bars. Run `scripts/media-windows.ps1 -Configuration Release`, or use `-Configuration RelWithDebInfo -BuildDirectory asan` with the MSVC runtime on PATH. The combined build script runs it after the sound suite.
+
+Release, Debug and ASan builds succeed. Native counts remain 84 Release/ASan and 85 Debug. Media (88), sound (99), correctness (107), features (75), layouts (61), device/recovery workflow (107), ASan no-font workflow (91), and Release font/no-font smoke (14) pass. Counts include repeated setup. Existing protocol/support libraries are unchanged from desktop.4 and were not rebuilt for this pass. No physical MIDI devices are used.
+
+Desktop.5 regression evidence, relative to `Source/Application/build`:
+
+| Suite | Release | ASan |
+|---|---|---|
+| Media (88) | `media/20261028-225928` | `media/20261028-225654` |
+| Stereo/effects/banks (99) | `sound/20261028-230049` | `sound/20261028-225803` |
+| MIDI/save/editor (107) | `correctness/20261028-230112` | `correctness/20261028-225934` |
+| Recording/SF2/archive (75) | `features/20261028-230125` | `features/20261028-230047` |
+| Layouts (61) | `layout/20261028-230142` | `layout/20261028-230140` |
+| Device/recovery (107) | `workflow/20261028-230202` | `workflow/20261028-230257` |
+| No-font workflow (91) | - | `workflow/20261028-230405` |
+| Font/no-font smoke (14) | `smoke/20261028-230217` | - |
+
+Final rebuilt binaries also pass media at `media/20261028-230619` (Release) and `media/20261028-230726` (ASan), and features at `features/20261028-230725` (Release) and `features/20261028-230841` (ASan). Independent RIFF/SMF header checks confirm float32 stereo 48 kHz WAV and type 1, 960-PPQ MIDI. Final sanitizer prefixes are `asan_desktop5` and `asan_desktop5_publish`; neither produces an address-error report. The 22-page manual includes the actual Projects screenshot and documents clip-only import, main-pattern export, random directions, scene release/tail behavior and external sample paths.

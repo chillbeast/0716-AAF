@@ -632,7 +632,8 @@ SongManager::SongManager(IParamChangeListener* listener, IgniteEngine& model) : 
 	}
 
 	activeSongId = -1;
-	openMidiInterfaces();
+	desktopOffline=juce::SystemStats::getEnvironmentVariable("IGNITE_HEADLESS_RENDER","")=="1";
+    if(!desktopOffline)openMidiInterfaces();
 	for (uint8_t i = 0; i < AUDITIONING_MAX_PORT; i++)
 	{
 		std::string TrackName = "AuditioningTrack" + std::to_string(i);
@@ -783,6 +784,7 @@ bool SongManager::populateSongFromFileSystem(int32_t songId)
 						tempTrack._trackData->trackTxInstrument = nullptr;
 						tempTrack._trackData->tvTrackDataCount = trackInfo.tvTrackDataCount;
 						tempTrack._trackData->tvTrackData = trackInfo.tvTrackData;
+                        tempTrack._trackData->hasDesktopFx=trackInfo.hasDesktopFx;tempTrack._trackData->desktopFxState=trackInfo.desktopFxState;
 						tempTrack.setTrackMainPattern (nullptr);
 
 						if (!trackInfo.trackRxInstrumentName.empty () && (trackInfo.trackRxInstrumentName != " "))
@@ -2353,6 +2355,7 @@ uint8_t SongManager::getPlaySceneNumTracks(void)
 //This function is called every time a bar finishes.
 void SongManager::advancePlayScene(void)
 {
+    if(desktopOffline)return;
 	if ((activeSong == nullptr) || (activeSong->playScene == nullptr))
 	{
 		//TODO warn
@@ -2543,6 +2546,18 @@ bool SongManager::getSongTrackMuteStatus(void)
 //		}
 //	}
 //}
+
+std::map<int,std::vector<int>> SongManager::desktopScaleIntervals() const
+{
+    std::map<int,std::vector<int>> result;
+    for(const auto& item:ftsList)result[int(item.first)]={item.second.scaleIntervalList.begin(),item.second.scaleIntervalList.end()};
+    return result;
+}
+void SongManager::setDesktopScaleIntervals(const std::map<int,std::vector<int>>& values)
+{
+    for(const auto& item:values)if(item.first>=int(ScaleList::ScaleMin) && item.first<int(ScaleList::ScaleMax))
+        ftsList[ScaleList(item.first)].scaleIntervalList={item.second.begin(),item.second.end()};
+}
 
 std::vector<int8_t> SongManager::generateScaleNotes(int8_t rootNote, int8_t scale)
 {
@@ -3115,7 +3130,8 @@ void SongManager::pulse(uint16_t pulse)
 			++(activeSong->playScene->gBarId);
 			activeSong->playScene->gStepId = 0;
 
-			activeSong->playScene->stopPlayingNotes();
+			if(activeSong->playScene->gBarId>=activeSong->playScene->getBarCount() || manualSwitchToNextScene || manualJumpToNewScene)
+				activeSong->playScene->stopPlayingNotes();
 			advancePlayScene();//check and advance
 
 			publishSceneBarInfoToUi();
@@ -3133,6 +3149,11 @@ void SongManager::pulse(uint16_t pulse)
 	auto& trackList = activeSong->getPlayScene()->_sceneData->trackList;
 	int16_t sceneBarId = activeSong->getPlayScene()->gBarId;
 	int16_t sceneStepId = activeSong->getPlayScene()->gStepId;
+    if(desktopOffline)
+    {
+        for(auto& track:trackList)track.pulse(sceneBarId,sceneStepId);
+        _pulseHandlingInProgress.store(false);return;
+    }
 #ifdef ENABLE_THREADS_TO_PLAY
 	std::list<TrackAndPosition> listTohandle;
 	int count = 0;
@@ -3990,6 +4011,12 @@ void SongManager::handleTVMidiMessageOnRecord(MidiMessage msg, int8_t midiport, 
 
 void SongManager::sendMidiMessage (MidiMessage msg, int8_t midiport, bool isInternalSound, Track* track)
 {
+    if(desktopOffline)
+    {
+        if(desktopOfflineMidi)desktopOfflineMidi(msg,track);
+        if(isInternalSound)sendMidiMessageInternal(msg,track);
+        return;
+    }
 	//DBG("OUT : " + msg.getDescription());
 #if 0
 	if (isSustainPedalOn && msg.isNoteOff ())
@@ -5469,17 +5496,18 @@ void SongManager::stopAudioProcessingTimer(void)
 
 
 #ifdef _WIN32
-void SongManager::renderDesktopStereo(AudioDataType* buffer)
+void SongManager::renderDesktopStereo(AudioDataType* buffer,int frames)
 {
-    std::fill_n(buffer,2*INTERNAL_AUDIO_20MS_BLOCK_SIZE,AudioDataType{});
+    if(frames<1 || frames>INTERNAL_AUDIO_20MS_BLOCK_SIZE)return;
+    std::fill_n(buffer,2*frames,AudioDataType{});
     std::unique_lock<std::recursive_mutex> lock(engine.stateMutex,std::try_to_lock);
     if(!lock.owns_lock()) return;
-    float* channels[]{buffer,buffer+INTERNAL_AUDIO_20MS_BLOCK_SIZE};
-    juce::AudioBuffer<float> output(channels,2,INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+    float* channels[]{buffer,buffer+frames};
+    juce::AudioBuffer<float> output(channels,2,frames);
     auto mix=[&](Track& track)
     {
-        track.sfSynthesizeAudio();
-        for(int ch=0;ch<2;++ch) output.addFrom(ch,0,track.audioBuff,ch,0,INTERNAL_AUDIO_20MS_BLOCK_SIZE,_masterVolume);
+        track.sfSynthesizeAudio(frames);
+        for(int ch=0;ch<2;++ch) output.addFrom(ch,0,track.audioBuff,ch,0,frames,_masterVolume);
     };
     auto* scene=activeSong?activeSong->getPlayScene():nullptr;
     if(scene) for(auto& track:scene->_sceneData->trackList) if(!track.trackMuted()) mix(track);
@@ -5619,8 +5647,9 @@ void SongManager::renderTracksAndMix(AudioDataType* buffer)
 }
 #endif//ENABLE_PARALLEL_EXE
 
-void SongManager::renderDesktopStereo(AudioDataType* buffer)
+void SongManager::renderDesktopStereo(AudioDataType* buffer,int frames)
 {
+    if(frames!=INTERNAL_AUDIO_20MS_BLOCK_SIZE)return;
     renderTracksAndMix(buffer);
     std::copy_n(buffer,INTERNAL_AUDIO_20MS_BLOCK_SIZE,buffer+INTERNAL_AUDIO_20MS_BLOCK_SIZE);
 }
@@ -6575,6 +6604,7 @@ void SongManager::checkAndOpenMidiHostDevice(void)
 
 void SongManager::sendMidiExternal (MidiMessage msg, uint8_t port)
 {
+    if(desktopOffline)return;
     auto stateLock = engine.lockDesktopState();
 #ifdef _WIN32
     if (desktopMidiOutput && desktopMidiOutput(msg, port)) return;

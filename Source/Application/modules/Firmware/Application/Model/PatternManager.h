@@ -146,6 +146,7 @@ namespace Ignite
 		void PatternMngrPowerOnHousekeeping ();
 
 		std::string addPattern (void);
+        std::string addDesktopPattern(ClientPatternData data);
 		std::string addPatternWithRandomData (uint8_t numBars);
 		Pattern* GetPatternFromIndex (int32_t index);
 		IgniteEngine& engine;

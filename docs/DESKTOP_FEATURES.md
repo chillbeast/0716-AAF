@@ -48,11 +48,19 @@ Windows rendering is stereo at 48 kHz, with independent stereo EQ/filter/chorus 
 
 EQ gain now uses -12 to +12 dB, with 0 dB bypass. Check existing nonzero saved EQ gains after upgrading: old values were used as linear multipliers and the shelves were reversed. Release time now applies independently to each synth.
 
+Track effects participate in song dirty tracking and Save All, and restore after reopening or rebuilding a synth. Older songs without saved effect fields keep their previous defaults until an effect is changed and saved. Notes can cross bar boundaries within a scene, and transpose preserves controller numbers and pitch-bend data.
+
 The startup default is an explicit `IGNITE_SOUNDFONT` override, the saved `SoundFont` preference, an adjacent `Ignite.sf2`, then the original platform fallback. The launcher also uses ignored build settings as a fallback. An invalid explicit override disables the default for diagnostic runs; instruments with valid explicit paths still work.
 
-## Backups
+## WAV, MIDI and backups
 
-![Project backup export and restore](images/desktop-projects.png)
+![Projects tab with media interchange and backup controls](images/desktop-projects.png)
+
+Stop playback/recording and choose **Current song** or **Current scene**, then **Full mix / all tracks** or a track number. **Export WAV...** renders internal instruments to stereo 48 kHz, 32-bit floating-point audio, including effects/master level and a final two-second tail. Repeat with different tracks for stems. **Export MIDI...** writes a type 1, 960-PPQ file with notes, supported controllers/pressure, tempo changes, scene markers and bank/program setup. MIDI contains no samples or audio; external instruments contribute only to MIDI export.
+
+Exports use a snapshot of current edits, including unsaved changes, in a separate process. Editing can continue. **Cancel export**, closing Settings or quitting cancels the job; failure/cancellation keeps an existing output file. Required SF2s must be available for WAV. No physical MIDI or audio device is needed. The arrangement limit is 30 minutes. Only main patterns are rendered once per selected scene: live fills, Sculpt gestures and incoming MIDI are not captured. Random directions generate a new pass. Notes release at scene changes; the extra tail follows only the final WAV scene.
+
+**Import MIDI clips...** validates a PPQ-timed file before adding patterns. Each source track/channel becomes one or more 16-bar chunks on a 4/4 sixteenth grid with 48 ticks/quarter timing. Assign the new patterns and output instruments yourself; the active arrangement and tempo are unchanged. Long notes crossing chunks retrigger. Exact duplicates merge and unmatched note edges are repaired with counts in the completion message. Save to retain imports. Full arrangement/tempo-map/time-signature import and SysEx are not supported. Limits are 32 MB, 200,000 channel events, 64 track/channel groups, a 4,096-bar span and 512 output patterns. See the [manual](manual/USER_MANUAL.md#11-save-export-and-restore).
 
 **Projects → Export backup...** saves the current libraries and writes a ZIP containing songs, patterns, instruments, settings and the library index. **Restore backup...** validates and stages a compatible Ignite backup before replacing the saved libraries. Ignite closes after a successful restore; launch it again to load the restored state. Restoring replaces the saved collection, so export the current collection first if you want to retain it.
 

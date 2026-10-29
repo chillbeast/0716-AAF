@@ -281,6 +281,15 @@ bool PatternManager::SavePattern(Pattern* pattern, bool isCreate)
     return true;
 }
 
+std::string PatternManager::addDesktopPattern(ClientPatternData data)
+{
+    data.id=numberOfPatterns++;
+    data.patternName="PATTERN-"+std::to_string(numberOfPatterns);modifyPatternNameIfDuplicate(data.patternName);
+    if(data.patternDispName.empty())data.patternDispName=data.patternName;
+    const auto name=data.patternName;patternList.push_back(CreatePattern(std::move(data)));
+    engine.desktopEdited("pattern:"+name);return name;
+}
+
 std::string PatternManager::addPattern(void)
 {
 	uint8_t direction = (uint8_t)PatternDirection::forward;//default direction forward

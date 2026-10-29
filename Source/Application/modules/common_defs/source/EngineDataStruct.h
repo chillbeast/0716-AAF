@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <array>
 #include <iostream>
 #include <iterator>
 #include <list>
@@ -154,6 +155,8 @@ namespace Ignite
 		Pattern* fillPattern = nullptr;
 		uint8_t tvTrackDataCount = 0;
 		std::unordered_map<int8_t, TrackValue> tvTrackData; //knobid, midi cc/pgm change data struct
+        bool hasDesktopFx = false;
+        std::array<float,16> desktopFxState{0,20,0,0,0,0,20000,20,0,12,0,70,40,1,0,0};
 	};
 
 	struct SceneData

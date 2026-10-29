@@ -8,6 +8,8 @@
 #include "Firmware/Application/Model/SoundFontProgram.h"
 #include "DesktopProjectArchive.h"
 #include "DesktopPreferences.h"
+#include "DesktopMediaJob.h"
+#include "DesktopMidiImport.h"
 
 namespace IgniteDesktop
 {
@@ -399,18 +401,77 @@ namespace IgniteDesktop
         int previewGeneration=0;
     };
 
-    class ProjectSettings : public juce::Component
+    class ProjectSettings : public juce::Component, private juce::Timer
     {
     public:
         explicit ProjectSettings(Ignite::IgniteEngine& e) : engine(e)
         {
-            for (auto* child : std::initializer_list<juce::Component*>{&description,&exportButton,&restoreButton,&status}) addAndMakeVisible(child);
+            for (auto* child : std::initializer_list<juce::Component*>{&description,&exportButton,&restoreButton,&status,&mediaDescription,&range,&stem,&wav,&midi,&import,&cancel}) addAndMakeVisible(child);
             description.setText("Export songs, patterns, instruments and settings as an Ignite backup ZIP. SoundFont files stay in your sample library. Restoring a backup requires restarting Ignite.",juce::dontSendNotification);
             exportButton.onClick=[this] { choose(false); }; restoreButton.onClick=[this] { choose(true); };
+            mediaDescription.setText("Export the current song or scene once, with current mute/solo settings. WAV uses internal sounds; MIDI includes external parts. Import adds clip patterns to the library.",juce::dontSendNotification);
+            range.addItem("Current song",1);range.addItem("Current scene",2);range.setSelectedId(1);
+            stem.addItem("Full mix / all tracks",1);for(int track=0;track<64;++track)stem.addItem("Track "+juce::String(track+1),track+2);stem.setSelectedId(1);
+            wav.onClick=[this]{chooseMedia(false);};midi.onClick=[this]{chooseMedia(true);};import.onClick=[this]{chooseImport();};cancel.onClick=[this]{job.cancel();};cancel.setEnabled(false);
             setSize(720,580);
         }
-        void resized() override {description.setBounds(16,16,getWidth()-32,90);exportButton.setBounds(16,124,210,34);restoreButton.setBounds(240,124,210,34);status.setBounds(16,174,getWidth()-32,100);}
+        ~ProjectSettings() override {stopTimer();}
+        void resized() override
+        {
+            description.setBounds(16,16,getWidth()-32,90);exportButton.setBounds(16,112,210,34);restoreButton.setBounds(240,112,210,34);
+            mediaDescription.setBounds(16,178,getWidth()-32,70);range.setBounds(16,260,220,30);stem.setBounds(250,260,getWidth()-266,30);
+            wav.setBounds(16,310,180,34);midi.setBounds(208,310,180,34);import.setBounds(400,310,180,34);cancel.setBounds(16,362,180,32);status.setBounds(16,414,getWidth()-32,getHeight()-430);
+        }
     private:
+        void timerCallback() override
+        {
+            const auto progress=job.progress();if(progress.isNotEmpty())status.setText("Exporting: "+progress,juce::dontSendNotification);
+        }
+        void busy(bool running)
+        {
+            for(auto* button:{&wav,&midi,&import,&exportButton,&restoreButton})button->setEnabled(!running);
+            range.setEnabled(!running);stem.setEnabled(!running);cancel.setEnabled(running);
+            if(running)startTimer(200);else stopTimer();
+        }
+        void chooseMedia(bool asMidi)
+        {
+            chooser=std::make_unique<juce::FileChooser>(asMidi?"Export MIDI arrangement":"Export stereo WAV",juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(asMidi?"Ignite.mid":"Ignite.wav"),asMidi?"*.mid":"*.wav");
+            juce::Component::SafePointer<ProjectSettings> safe(this);
+            chooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::warnAboutOverwriting,[safe,asMidi](const auto& choice)
+            {
+                if(!safe || choice.getResult()==juce::File{})return;
+                try
+                {
+                    auto snapshot=Media::capture(safe->engine,safe->range.getSelectedId()==2,safe->stem.getSelectedId()-2,asMidi?"midi":"wav");
+                    const auto target=choice.getResult();
+                    if(!target.hasFileExtension(asMidi?"mid;midi":"wav")){safe->status.setText("Choose a filename ending in "+juce::String(asMidi?".mid or .midi":".wav"),juce::dontSendNotification);return;}
+                    auto result=safe->job.start(std::move(snapshot),target,[safe,target](juce::Result result)
+                    {
+                        if(!safe)return;safe->busy(false);safe->status.setText(result.wasOk()?"Exported: "+target.getFullPathName():result.getErrorMessage(),juce::dontSendNotification);
+                    });
+                    if(result.failed())safe->status.setText(result.getErrorMessage(),juce::dontSendNotification);
+                    else{safe->busy(true);safe->status.setText("Exporting a snapshot. You can continue editing or cancel the export.",juce::dontSendNotification);}
+                }
+                catch(const std::exception& error){safe->status.setText(juce::String(error.what()),juce::dontSendNotification);}
+            });
+        }
+        void chooseImport()
+        {
+            chooser=std::make_unique<juce::FileChooser>("Import MIDI clips",juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),"*.mid;*.midi");
+            juce::Component::SafePointer<ProjectSettings> safe(this);
+            chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe](const auto& choice)
+            {
+                if(!safe || !choice.getResult().existsAsFile())return;
+                try
+                {
+                    auto clips=Media::MidiImport::parse(choice.getResult());const auto names=clips.apply(safe->engine);
+                    ui::IgnitePattern::getAppPatternInstance()->updateDataFromEngine();
+                    safe->status.setText("Imported "+juce::String(int(names.size()))+" clip patterns. Source tempo: "+juce::String(clips.tempo,1)+" BPM; scene tempo is unchanged. Save to keep them."+
+                        (clips.duplicates?" Coincident duplicate notes merged: "+juce::String(clips.duplicates):juce::String{})+(clips.unmatched?" Unmatched note events repaired: "+juce::String(clips.unmatched):juce::String{}),juce::dontSendNotification);
+                }
+                catch(const std::exception& error){safe->status.setText(juce::String(error.what()),juce::dontSendNotification);}
+            });
+        }
         void choose(bool restoring)
         {
             chooser=std::make_unique<juce::FileChooser>(restoring?"Restore Ignite backup":"Export Ignite backup",
@@ -449,7 +510,10 @@ namespace IgniteDesktop
             });
         }
         Ignite::IgniteEngine& engine;
-        juce::Label description,status;
+        juce::Label description,status,mediaDescription;
+        juce::ComboBox range,stem;
+        Media::Job job;
+        juce::TextButton wav{"Export WAV..."},midi{"Export MIDI..."},import{"Import MIDI clips..."},cancel{"Cancel export"};
         juce::TextButton exportButton{"Export backup..."},restoreButton{"Restore backup..."};
         std::unique_ptr<juce::FileChooser> chooser;
     };

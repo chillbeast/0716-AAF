@@ -1,10 +1,10 @@
 ﻿# IGNITE Desktop Simulator
 
-**User manual · Community release v0.3.3-desktop.4 · 28 October 2026**
+**User manual · Community release v0.3.3-desktop.5 · 28 October 2026**
 
 IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with compact and hardware layouts, plus desktop audio, MIDI, SoundFont and backup controls. Both layouts run the actual firmware touchscreen and the same panel controls.
 
-This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.4` identifies this community release.
+This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.5` identifies this community release.
 
 ![IGNITE simulator compact layout with a large live touchscreen](../images/ignite-compact.png)
 
@@ -27,7 +27,7 @@ This is an independent community build of Music Tribe's open-source release. It 
 
 ## 1. Install and launch
 
-Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.4). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
+Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.5). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
 
 The package is portable and does not require an installer, Visual Studio or a Python installation to run. Development tools are needed only to rebuild it. A working Windows audio output is required to hear internal sound. Supply your own `.sf2` SoundFont; sample banks are not included.
 
@@ -142,6 +142,8 @@ Start with the internal clock. Source settings also cover MIDI clock, MIDI Machi
 
 Knobs A–H have the front-panel labels **Release, Cutoff, Resonance, Volume, Reverb, Chorus, EQ High and EQ Low**. Their actual response depends on the active firmware context and instrument/effect setup. Effects and transforms can change loudness; use moderate output levels while exploring.
 
+Track effect changes now participate in unsaved-change tracking and Save All. Saved values are restored when the synth is rebuilt and after reopening the song. Songs saved before this support retain their previous effect defaults until you change and save the effects. Notes can continue across bar boundaries within a scene; scene changes still release the previous scene's notes. Transpose changes notes and their polyphonic pressure pitches while retaining controller numbers and pitch-bend data.
+
 ## 7. SoundFonts and internal instruments
 
 ![SoundFont browser showing a generated bank 42, program 7 test preset](../images/desktop-soundfonts.png)
@@ -252,6 +254,29 @@ Restoring replaces the collection rather than merging it. Export the current col
 
 Song, scene, pattern and desktop restore replacements retain recovery directories. A missing library from an interrupted directory swap is recovered at startup. Recovery copies are not a substitute for an exported backup, and Save All is not one transaction across all possible settings files.
 
+### Export WAV audio or MIDI
+
+1. Stop playback and recording, then open **Desktop Settings → Projects**.
+2. Choose **Current song** for every scene in order, or **Current scene** for the selected scene once.
+3. Choose **Full mix** or a specific track. A track selection exports that track across the chosen range; repeat for additional stems.
+4. Press **Export WAV...** or **Export MIDI...**, choose a filename and wait for completion.
+
+WAV output is stereo **48 kHz, 32-bit floating point**, with a two-second release/effect tail after the final scene. It includes internal instruments, mute/solo selection, effects and master level. External MIDI instruments contribute no audio. Required SF2 files and presets must be available. There is a 30-minute arrangement limit. Floating-point files can retain peaks above 0 dBFS; adjust the level in your audio editor before converting to an integer format.
+
+MIDI output is a **type 1 Standard MIDI File, 960 PPQ**, with scene tempo changes and markers, track names, note durations, supported controller/pressure/pitch-bend events and instrument bank/program initialization. Logical output-port metadata accompanies initialization; your DAW may require routing the tracks again. MIDI contains no audio, SF2 samples or Ignite effect processing. Shared channels on a destination can still interact, so choose distinct channel/port assignments when needed.
+
+Export uses a snapshot of the current in-memory edits, including unsaved changes, in an isolated background process. You can continue editing while it renders. **Cancel export** or closing Desktop Settings cancels the job. A cancelled or failed job keeps an existing destination file; a completed export replaces it. Progress appears in Projects. Neither export requires physical MIDI devices or a live audio output.
+
+Exports render assigned **main patterns** once through the selected scene range. Live fills, Sculpt gestures, incoming MIDI and other performance actions are not captured. Random directions produce a fresh pass rather than a recording of an earlier performance. Scene boundaries release notes; only the final WAV scene receives the extra two-second tail.
+
+### Import MIDI clips
+
+Press **Import MIDI clips...** in Projects and choose a PPQ-timed `.mid` or `.midi` file. Ignite separates each source track/channel into new library patterns, splitting long material into chunks of at most **16 bars** on a **4/4 sixteenth-note grid**, with timing rounded to **48 ticks per quarter note**. Names include the source track, channel and chunk number. Empty chunks are omitted; notes crossing chunk boundaries are clipped and retriggered in the next chunk. Exact pitch/start duplicates merge, and unmatched note edges are repaired; the completion message reports these adjustments.
+
+Import adds patterns without replacing the current song, scene, existing patterns, tempo or assignments. The reported source tempo is informational. Assign an imported pattern and an output instrument to a track, set the scene's tempo and length as needed, then play it. Imported channel numbers are retained in names; playback uses the assigned instrument's routing. Press **SAVE** to keep the new patterns.
+
+This imports clips rather than a complete song arrangement: tempo maps, time signatures, SysEx and other metadata are not reconstructed. Limits are 32 MB, 200,000 channel events, 64 track/channel groups, a 4,096-bar source span and 512 resulting patterns. SMPTE timing and malformed files are rejected before adding patterns.
+
 ## 12. Troubleshooting
 
 | Symptom | Checks |
@@ -267,6 +292,9 @@ Song, scene, pattern and desktop restore replacements retain recovery directorie
 | Audio crackles or feels delayed | Try a wired output and another buffer size; reduce active voices/effects and avoid large edits during playback. |
 | Old notes keep sounding | Use Desktop Settings → Panic and check note-off input/routing. |
 | A restored project looks unchanged | Close and reopen Ignite; restore replaces saved files, then startup reloads the libraries. |
+| WAV export reports a missing sound | Repair the required instrument's SF2 path/preset, or choose a track with available internal sound. MIDI export does not need an SF2. |
+| An export disappears when settings close | Keep Desktop Settings open until completion; closing it cancels an active export. |
+| Imported MIDI is not on the current track | Select the new library pattern, assign it to a track and choose an output instrument; import does not alter the arrangement. |
 | Desktop shortcut stops working | Confirm the extracted/source folder has not moved and update the shortcut target. |
 | Debug takes a long time to exit | Use Release for normal operation; inherited UI allocations produce a long Debug CRT leak report. |
 
@@ -279,6 +307,7 @@ For a file log, set `IGNITE_LOG` to a writable path before launch. Source-checko
 | Tested on Windows | Build and startup, vector panel navigation, model creation/editing/copying, save/reopen, staged-save recovery, track counts through 64, playback edits, device audio and rate conversion. |
 | Tested with internal MIDI | Logical input/output routing, channel-filtered step recording, live velocity/duration, saved recordings and fresh-process verification. |
 | Tested desktop services | Actual SF2 preset enumeration, non-GM assignment and preview, failed-bank retention, preferences and backup/restore round trips, unsafe/corrupt archive rejection. |
+| Tested file interchange | Song/scene WAV and MIDI export, track stems, tempo changes, MIDI clip import/save/reopen, unsaved snapshots, failed/cancelled output protection and saved track effects. |
 | Present in source; coverage varies | All editor combinations, auxiliary events, main/fill performance, gang/sculpt, scales/transpose, remote control and external clock options. |
 | Requires physical testing | MIDI controllers and external destinations, DIN/USB hardware endpoints, CV/Gate voltages, sync jacks, calibration, updates and hotplug behavior. |
 | Incomplete device distribution | MCU firmware, Wi-Fi firmware and the proprietary PC transfer service were omitted upstream. A complete flashable image is not supplied. |
@@ -302,10 +331,11 @@ See [Windows build instructions](../BUILD_WINDOWS.md) for Visual Studio, CMake, 
 .\scripts\features-windows.ps1 -Configuration Release
 .\scripts\correctness-windows.ps1 -Configuration Release
 .\scripts\sound-windows.ps1 -Configuration Release
+.\scripts\media-windows.ps1 -Configuration Release
 .\scripts\workflow-windows.ps1 -Configuration Release -NodeEdit -AudioDevice -SimulateInterruptedSave
 ```
 
-Tests use disposable directories under the ignored build tree. The release was checked with **84 native Release/ASan checks**, **85 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **61 layout checks**, **99 stereo/effects/multi-bank checks**, **91 no-font workflow checks under ASan**, **seven smoke checks per font/no-font case**, and **five packet-protocol checks**. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
+Tests use disposable directories under the ignored build tree. Verification covers **84 native Release/ASan checks**, **85 native Debug checks**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **61 layout checks**, **99 stereo/effects/multi-bank checks**, **88 media setup/export/import/reopen checks**, **91 no-font workflow checks under ASan**, and **seven smoke checks per font/no-font case**. The unchanged packet protocol previously passed five checks. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
 
 The separate AudIO, DAW and Airwindows libraries also build, but the main app uses its firmware TinySoundFont path. Detailed evidence and remaining audit items are in [AUDIT_FIXES.md](../AUDIT_FIXES.md), [CAPABILITIES.md](../CAPABILITIES.md) and [DEVELOPMENT.md](../DEVELOPMENT.md).
 

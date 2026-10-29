@@ -1,3 +1,18 @@
+# IGNITE Desktop v0.3.3-desktop.5
+
+WAV/stem export, MIDI file interchange and saved track effects.
+
+- Projects exports the current song or scene once as stereo 48 kHz, 32-bit floating-point WAV, with effects and a two-second final tail. Choose the full mix or one track for stems. Required SoundFonts stay external.
+- Export type 1 MIDI at 960 PPQ with scene tempos/markers, notes, supported controllers/pressure, and bank/program setup. Export works without MIDI devices or a live audio output.
+- Import PPQ-timed MIDI as new pattern-library clips grouped by source track/channel, in chunks of up to 16 bars. Assign clips to tracks and save them. The current song, tempo and assignments are unchanged; complete arrangement/tempo-map import is not included.
+- Exports snapshot current unsaved edits in an isolated background process. Keep editing while it renders. Cancellation, render failure and locked destinations preserve an existing output file. Closing Desktop Settings cancels an active export.
+- Track effects now save with songs and restore after reopening or synth reconstruction. Corrected controller transposition and notes being cut at every bar boundary.
+- Updated illustrated HTML/PDF manual, Projects controls and reproducible media tests covering stereo duration, multi-scene tempos, unsaved snapshots, clip persistence, track effects and output failure/cancellation.
+
+Release, Debug and AddressSanitizer builds succeed. Verification includes 88 media/setup/reopen checks, 84 native Release/ASan checks (85 Debug), 99 sound, 107 MIDI/save/editor, 75 desktop feature, 61 layout, 107 device/recovery workflow and 14 font/no-font smoke checks. Media, sound, correctness, feature, layout and workflow suites also pass under ASan, with a further 91-check missing-font workflow. Counts include repeated setup; final sanitizer runs produce no address-error report.
+
+Download **Ignite-Desktop-v0.3.3-desktop.5-windows-x64.zip**, extract it and run **Ignite.exe**. Open **Desktop Settings → Projects** for the new controls. The package includes the illustrated manual and corresponding source; supply your own SF2 files. Exports cover main patterns, not live fill/Sculpt/input performances; random directions generate a fresh pass. Physical MIDI/CV/clock qualification, complete SF2 modulators and an Ignite VST remain outstanding. This is a community preview.
+
 # IGNITE Desktop v0.3.3-desktop.4
 
 Stereo sound, configurable voice limits and separate SoundFonts for each instrument.

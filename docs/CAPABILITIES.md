@@ -29,10 +29,10 @@ The running application uses a modified **TinySoundFont** implementation in `mod
 | Bank format | SoundFont 2 (`.sf2`), loaded from a file. SF3 support is not established. |
 | Voice limit | Windows default: 32 voices per track, configurable to 8/16/32/64/128. Presets can use multiple voices per note; maximum aggregate polyphony is not a real-time performance guarantee. |
 | Audio format | Windows stereo synthesis/effects at 48 kHz, 32-bit float, resampled to the device rate. Stereo channel histories remain independent; mono output uses a downmix. |
-| Render quantum | 960 samples / 20 ms. The desktop adapter preserves samples across arbitrary driver buffer sizes. |
+| Render quantum | Live rendering uses 960 samples / 20 ms. The desktop adapter preserves samples across arbitrary driver buffer sizes; offline export also supports shorter blocks for exact timing. |
 | Program selection | Original GM programs plus a desktop browser enumerating actual preset names, banks and programs, with preview and saved custom assignments. A default SF2 and per-instrument SF2 assignments coexist, with sample data shared by path. |
 | Controls | Release, cutoff, resonance, volume, reverb, chorus, EQ high and EQ low; alternate functions and track-value transforms are present. |
-| Effects | JUCE reverb, chorus, EQ/filter/gain processing in `Track`; five effect-order slots. The much larger Airwindows collection in AudIO is not automatically available in the IGNITE UI. |
+| Effects | JUCE reverb, chorus, EQ/filter/gain processing in `Track`; five effect-order slots. Track effect values save with songs and restore after reopening/synth reconstruction. The much larger Airwindows collection in AudIO is not automatically available in the IGNITE UI. |
 | Missing bank | This branch disables internal sound safely; the public baseline dereferenced failed font loads. |
 
 The local library scan found **1,094 SF2 files**. `CT4MGM.SF2` has **329 presets**, all **128 GM bank-0 programs**, and **10 bank-128 drum presets**. A native probe rendered piano, fingered bass, strings, square lead and a standard-kit kick to finite, non-silent audio. The bank is loaded from the user's sample library and is not included in the repository.
@@ -60,6 +60,18 @@ The local library scan found **1,094 SF2 files**. `CT4MGM.SF2` has **329 presets
 
 Source paths above are relative to [`Source/Application/modules`](../Source/Application/modules).
 
-The desktop.3 pass adds MIDI controller support, checked settings saves and a close prompt, step insertion, and editor/performance regressions. See [AUDIT_FIXES.md](AUDIT_FIXES.md) for the specific fixes and verified limits. MIDI file import/export, song WAV export, a functional Ignite VST remain future work.
+The desktop.3 pass adds MIDI controller support, checked settings saves and a close prompt, step insertion, and editor/performance regressions. See [AUDIT_FIXES.md](AUDIT_FIXES.md) for the specific fixes and verified limits.
 
-Desktop.4 adds stereo/effects, configurable polyphony and persistent per-instrument SF2 assignments. MIDI file import/export, WAV/stem bounce and complete SoundFont modulator compatibility remain future work.
+Desktop.4 adds stereo/effects, configurable polyphony and persistent per-instrument SF2 assignments.
+
+## Desktop file interchange (desktop.5)
+
+| Operation | Implemented behavior / boundary |
+|---|---|
+| WAV / stems | Current song or scene once, full mix or one track, stereo 48 kHz float32 with effects and a final two-second tail. Internal instruments only; required SF2s stay external. Maximum 30-minute arrangement. |
+| MIDI export | Type 1 SMF, 960 PPQ; scene tempos/markers, notes, supported controllers/pressure/pitch bend, bank/program setup and logical-port metadata. Routing may need adjustment in another app. |
+| MIDI clip import | Additive library patterns by source track/channel, up to 16 bars each, fixed 4/4 sixteenth grid with 48 ticks/quarter resolution. Current song/tempo/assignments are unchanged. Full song, tempo-map, time-signature and SysEx import remain future work. |
+| Export isolation | Snapshot includes unsaved edits; a child engine renders without live clock, audio-device or MIDI access. Cancellation, child failure and locked destination preserve an existing output. |
+| Performance boundary | Main patterns only; live fill/Sculpt/input actions are not captured. Random directions generate a fresh pass. Scene boundaries release notes; only the final scene has a WAV tail. |
+
+Complete SoundFont modulator compatibility, a working Ignite VST and physical MIDI/CV/clock qualification remain outstanding.

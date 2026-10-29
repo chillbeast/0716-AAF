@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <stdint.h>
 #include <iostream>
 #include <iterator>
@@ -311,7 +312,7 @@ namespace Ignite
 		void sfNoteOn(uint8_t channel, uint8_t key, float velocity);
 		void sfNoteOff(uint8_t channel, uint8_t key);
 		void sfHandleMidi(const juce::MidiMessage& message);
-		void sfSynthesizeAudio(void);
+		void sfSynthesizeAudio(int frames = INTERNAL_AUDIO_20MS_BLOCK_SIZE);
 		void sfSetProgram(void);
 		void sfChangeProgram(void);
 
@@ -444,6 +445,9 @@ namespace Ignite
         float EQgainDb[EQFILTER_INDEX_MAX] = { 0.0f, 0.0f };
         void updateEq(int index);
         void processInternalEffects();
+        std::array<float,16>& desktopEffectValues();
+        const std::array<float,16>& desktopEffectValues() const;
+        void restoreDesktopEffects();
 		bool EQisEnabled[EQFILTER_INDEX_MAX] = { false, false };
 		juce::dsp::LadderFilter<float> filter;
 		float filtercutoffFreq = 20000.0f;

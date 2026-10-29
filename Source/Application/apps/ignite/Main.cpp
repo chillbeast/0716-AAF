@@ -39,6 +39,8 @@ extern IDevice* EngineInit(void);
 #include "DesktopCloseGuard.h"
 #include "DesktopCorrectnessTest.h"
 #include "DesktopSoundTest.h"
+#include "DesktopMediaRender.h"
+#include "DesktopMediaTest.h"
 
 //==============================================================================
 #define SHOW_BOOT_IMAGE
@@ -110,6 +112,17 @@ public:
 			fileLogger = std::make_unique<FileLogger>(File(logPath), "IGNITE desktop " + getApplicationVersion(), 0);
 			Logger::setCurrentLogger(fileLogger.get());
 		}
+        if(commandLine.contains("--render-job"))
+        {
+            auto arguments=juce::StringArray::fromTokens(commandLine,true);arguments.trim();
+            const int index=arguments.indexOf("--render-job");
+            const auto path=index>=0 && index+1<arguments.size()?arguments[index+1].unquoted():juce::String{};
+            if(path.isEmpty()){setApplicationReturnValue(1);quit();return;}
+            _PUiVirtualEngine=std::unique_ptr<IDevice>(EngineInit());
+            for(int i=0;i<100 && !_PUiVirtualEngine->isIDeviceReady();++i)juce::Thread::sleep(100);
+            Timer::callAfterDelay(1,[this,path]{const int result=IgniteDesktop::Media::renderJob(*static_cast<IgniteEngine*>(_PUiVirtualEngine.get()),juce::File(path));setApplicationReturnValue(result);quit();});
+            return;
+        }
 #if defined SHOW_BOOT_IMAGE
 		int waitCount = ENGINE_READY_WAIT_TIME_SEC;
 #ifdef _WIN64
@@ -212,6 +225,14 @@ public:
                 if(!failures)failures=DesktopSoundTest::run(engine,verify,missing);
                 setApplicationReturnValue(failures?1:0);quit();
             });
+        if(commandLine.contains("--media-test") || commandLine.contains("--media-verify"))
+            Timer::callAfterDelay(2500,[this,commandLine]
+            {
+                auto& engine=*static_cast<IgniteEngine*>(_PUiVirtualEngine.get());const bool verify=commandLine.contains("--media-verify");
+                const int failures=verify?0:DesktopWorkflowTest::run(engine,false,true,false);
+                if(failures){setApplicationReturnValue(1);quit();return;}
+                mediaTest=std::make_unique<DesktopMediaTest>(engine,[this](int failed){setApplicationReturnValue(failed?1:0);quit();});mediaTest->start(verify);
+            });
 		auto snapshotPath = SystemStats::getEnvironmentVariable("IGNITE_SNAPSHOT", "");
 		if (snapshotPath.isNotEmpty())
 			Timer::callAfterDelay(2000, [this, snapshotPath]
@@ -229,6 +250,7 @@ public:
 
 	void shutdown() override
 	{
+        mediaTest.reset();
         closeGuard.reset();
         layoutTest.reset();
         if (desktopSettings) delete desktopSettings.getComponent();
@@ -435,6 +457,7 @@ private:
     std::unique_ptr<IgniteDesktop::MidiRouter> midiRouter;
     std::unique_ptr<DesktopLayoutTest> layoutTest;
     std::unique_ptr<DesktopCloseGuard> closeGuard;
+    std::unique_ptr<DesktopMediaTest> mediaTest;
     juce::Component::SafePointer<juce::DialogWindow> desktopSettings;
 	std::unique_ptr<MainWindow> mainWindow;
 	std::unique_ptr<FileLogger> fileLogger;

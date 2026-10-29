@@ -878,6 +878,8 @@ FileHandlerError EngineFileHandler::writeTracks(const fs::path& folder, const st
 			DataInfo->setAttribute("mainPatternName", TrackData.mainPatternName);
 			DataInfo->setAttribute("fillPatternName", TrackData.fillPatternName);
 			DataInfo->setAttribute("tvTrackDatasize", tvTrackDatasize);
+            DataInfo->setAttribute("desktopFx",TrackData.hasDesktopFx);
+            if(TrackData.hasDesktopFx)for(int key=0;key<16;++key)DataInfo->setAttribute("fx"+juce::String(key),TrackData.desktopFxState[size_t(key)]);
 
 			if (TrackData.tvTrackData.size() > 0)
 			{
@@ -950,6 +952,9 @@ std::vector<TrackData> EngineFileHandler::GetTrackDataList(std::string SongName,
 					TrackData.mainPatternName = e->getStringAttribute("mainPatternName").toStdString();
 					TrackData.fillPatternName = e->getStringAttribute("fillPatternName").toStdString();
 					TrackData.tvTrackDataCount = (uint8_t)e->getIntAttribute("tvTrackDatasize");
+                    TrackData.hasDesktopFx=e->getBoolAttribute("desktopFx",false);
+                    const Ignite::TrackData defaults{};
+                    for(int key=0;key<16;++key)TrackData.desktopFxState[size_t(key)]=float(e->getDoubleAttribute("fx"+juce::String(key),defaults.desktopFxState[size_t(key)]));
 					TrackData.tvTrackData.clear();
 
 					if (TrackData.tvTrackDataCount > 0)

@@ -142,6 +142,7 @@ Track::Track (const Track& source) :
 
 	this->_patternTimeBase = source._patternTimeBase;
 	this->_patternSwing = source._patternSwing;
+    _trackData->hasDesktopFx=source._trackData->hasDesktopFx;_trackData->desktopFxState=source._trackData->desktopFxState;
 
 	this->_rxMidiPort = source._rxMidiPort;
 	this->_rxMidiChannel = source._rxMidiChannel;
@@ -585,15 +586,15 @@ void Track::pulse(int16_t sceneBarId, int16_t sceneStepId)
 						TIMER_STOP(7);
 
 						TIMER_START(8);
-						handleCvGeneration(patternName, false);
+						if(!_songManager->desktopOffline)handleCvGeneration(patternName, false);
 						TIMER_STOP(8);
 
 						TIMER_START(9);
-						sculptUpdate(pattern);
+						if(!_songManager->desktopOffline)sculptUpdate(pattern);
 						TIMER_STOP(9);
 
 						TIMER_START(10);
-						recordStepEvents();
+						if(!_songManager->desktopOffline)recordStepEvents();
 						TIMER_STOP(10);
 					}
 					TIMER_START(11);
@@ -1060,6 +1061,8 @@ void Track::initTrackPlaySetting (void)
 	//Internal audio - effects
 	resetEffects();
 	effectsInit();
+
+    if(_trackData->hasDesktopFx)restoreDesktopEffects();
 
 	//Live record is always associated with play
 	//Currently it resets the loop tracking variables, for record overwrite control
@@ -2657,6 +2660,7 @@ void Track::useDesktopSoundFont(std::shared_ptr<void> font)
 
 void Track::sfLoad(void)
 {
+    if(_songManager->desktopOffline && (!_songManager->desktopOfflineAudio || trackMuted()))return;
     const auto path=_songManager->soundFontPathForInstrument(getTrackTxInstrument());
     if(!_trackSf || desktopLoadedFontPath!=path)
     {
@@ -2709,13 +2713,14 @@ void Track::sfHandleMidi(const juce::MidiMessage& message)
     else if (size>=3 && message.isAftertouch()) tsf_channel_set_key_pressure(sf,0,message.getNoteNumber(),message.getAfterTouchValue());
 }
 
-void Track::sfSynthesizeAudio(void)
+void Track::sfSynthesizeAudio(int frames)
 {
+    if(frames<1 || frames>INTERNAL_AUDIO_20MS_BLOCK_SIZE)return;
     float* channels[audioChannels]{};
-    for(int ch=0;ch<audioChannels;++ch) channels[ch]=_twentyMsBuffer+ch*INTERNAL_AUDIO_20MS_BLOCK_SIZE;
-    audioBuff=juce::AudioBuffer<float>(channels,audioChannels,INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+    for(int ch=0;ch<audioChannels;++ch) channels[ch]=_twentyMsBuffer+ch*frames;
+    audioBuff=juce::AudioBuffer<float>(channels,audioChannels,frames);
     if(!_trackSf) {audioBuff.clear();return;}
-    tsf_render_float(static_cast<tsf*>(_trackSf),_twentyMsBuffer,INTERNAL_AUDIO_20MS_BLOCK_SIZE,0);
+    tsf_render_float(static_cast<tsf*>(_trackSf),_twentyMsBuffer,frames,0);
     processInternalEffects();
 }
 
@@ -2732,8 +2737,8 @@ void Track::processInternalEffects()
             case AUDIO_REVERB:
                 if(theReverbParameters.width>0)
                 {
-                    if constexpr(audioChannels==2) igniteReverb.processStereo(channels[0],channels[1],INTERNAL_AUDIO_20MS_BLOCK_SIZE);
-                    else igniteReverb.processMono(channels[0],INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+                    if constexpr(audioChannels==2) igniteReverb.processStereo(channels[0],channels[1],audioBuff.getNumSamples());
+                    else igniteReverb.processMono(channels[0],audioBuff.getNumSamples());
                 }
                 break;
             case AUDIO_CHORUS:if(chorusStatus[0])_Chorus[0].process(context);break;
@@ -2796,10 +2801,23 @@ void Track::updateEq(int index)
     *eqFilter[index].state=*coefficients;
 }
 
+std::array<float,16>& Track::desktopEffectValues(){return _trackData->desktopFxState;}
+const std::array<float,16>& Track::desktopEffectValues() const{return _trackData->desktopFxState;}
+
+void Track::restoreDesktopEffects()
+{
+    const auto saved=_trackData->desktopFxState;
+    for(int key=0;key<16;++key)if(key!=3 && key!=8 && key!=10)setInternalAudioEffects(uint8_t(key%8),saved[size_t(key)],key>=8);
+}
+
 void Track::setInternalAudioEffects(uint8_t knobID,float value,bool alternate)
 {
 #ifdef USE_INTERNAL_EFFECTS
     if(!std::isfinite(value)) return;
+    const int control=knobID%8;
+    auto& state=_trackData->desktopFxState[size_t(control+((alternate && control!=0 && control!=2)?8:0))];
+    if(state!=value && !_songManager->desktopOffline)_songManager->engine.desktopEdited("song");
+    state=value;_trackData->hasDesktopFx=true;
     switch(knobID%8)
     {
         case uint8_t(InternalAudioCC::RELEASE):
@@ -3238,6 +3256,7 @@ void Track::playStepEvents(std::string patternName)
 			TIMER_STOP_2(17);
 
 			TIMER_START_2(18);
+			if((event.type & 0xf0)==0x80 || (event.type & 0xf0)==0x90 || (event.type & 0xf0)==0xa0)
 			_songManager->applyFtsAndTranspose(event.data1, transposeDefeatStatus, ftsDefeatStatus);
 			TIMER_STOP_2(18);
 
@@ -3734,5 +3753,6 @@ void Track::prepareDesktopMonitor()
         resetEffects();
         effectsInit();
         sfLoad();
+        if(_trackData->hasDesktopFx)restoreDesktopEffects();
     }
 }

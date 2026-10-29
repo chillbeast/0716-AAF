@@ -1,6 +1,6 @@
 # Desktop reliability repairs, 2026-10-28
 
-This pass uses the adjacent KICK audit as a reference for model lifetime, message-thread UI updates, safe persistence and sanitizer-backed workflow tests. IGNITE has its own engine; fixes were adapted to its source rather than copied wholesale. All changes remain local on `desktop-build`.
+This pass uses the adjacent KICK audit as a reference for model lifetime, message-thread UI updates, safe persistence and sanitizer-backed workflow tests. IGNITE has its own engine; fixes were adapted to its source rather than copied wholesale. Community changes are published from `desktop-build`.
 
 ## Confirmed failures and repairs
 
@@ -105,3 +105,15 @@ Windows tracks render planar stereo through effects and mixing. A two-channel bl
 Instrument XML stores an optional UTF-8 SF2 path, empty meaning default. Construction, copying, undo and save/reload preserve it. Sample data is cached by path while track copies keep separate voices/controllers/effects. Browser/preview banks are independent of assignments, and assignments validate presets first. Backups store paths/programs with samples external. Missing assigned/default banks are tested in fresh processes.
 
 Run `scripts/sound-windows.ps1` for original stereo/alternate sine fixtures and disposable data. Coverage includes rendered pitches, pan, concurrent banks, preview, voice allocation, EQ frequency response, stereo isolation, chorus, reverb tails, release timing, control ranges, block adaptation, undo and backup round trips. Complete SF2 modulators, every bank format and maximum aggregate real-time polyphony remain outside this qualification.
+
+## Desktop.5 media and persistence
+
+`DesktopMediaSnapshot` serializes current patterns, assigned instruments, scene timing, transforms/scales, mute/solo state and track effects under the model lock. `DesktopMediaJob` creates a private temporary workspace and a child process with a scoped data directory. The parent remains responsive, retains its unsaved edits and never changes its process environment. The child uses inline sequencer pulses, finite scene order and variable-size audio blocks without the live clock, MIDI routing, monitor mix, CV generation or performance recording.
+
+WAV output is 48 kHz stereo float32, with sample positions rounded from each pulse's tempo and a final two-second tail. MIDI is type 1, 960 PPQ with a conductor tempo/marker track. Output is written beside the destination under a unique pending name, validated and atomically replaced only after child success. Missing fonts, cancellation, child failure and an actual Windows destination lock preserve the old output. Destruction cancels only the owned child and removes its temporary data.
+
+`DesktopMidiImport` parses and bounds the complete file before adding independent library patterns, using track/channel groups and 16-bar chunks with tick offsets. It rejects SMPTE/invalid/oversized material, retains final controller events, repairs unmatched note edges and reports coincident-note merging. Import does not assign tracks or alter tempo, and normal Save All persists the new patterns. Full arrangement/tempo-map import remains outstanding.
+
+The media review exposed three existing engine issues. Transpose was changing auxiliary controller numbers and pitch-bend data; it now transforms only note and poly-pressure pitches. SongManager stopped notes at every global bar; it now releases them at scene boundaries/manual scene changes. Effects lived only in DSP objects; canonical values now travel with TrackData, track copies and song XML, restore after synth reconstruction, and mark song edits dirty. Files without the new effect flag retain the previous default behavior.
+
+The 88-check runner combines 50 arrangement setup, 33 media checks and five fresh-process checks. It generates original MIDI/SF2 fixtures, verifies rendered scene/song frame counts and stereo format, multi-tempo MIDI, an unsaved snapshot distinct from later parent edits, controller/pressure transpose, held notes across bars, stems, failure/cancellation/locked-output protection, clip persistence and saved effects. Run `scripts/media-windows.ps1`; sanitizer use follows the sound suite. Export covers main patterns once per scene and excludes live fills, Sculpt gestures and incoming MIDI. Random directions generate a fresh pass, and only the final WAV scene receives an extra tail.

@@ -139,6 +139,8 @@ namespace Ignite
 		void initPlayScene(int32_t sceneId);
 
 		std::vector<int8_t> generateScaleNotes(int8_t rootNote, int8_t scale);
+        std::map<int,std::vector<int>> desktopScaleIntervals() const;
+        void setDesktopScaleIntervals(const std::map<int,std::vector<int>>& values);
 		int8_t scaleNote(int8_t note);
 		int8_t transposeNote(int8_t note);
 		void publishSceneInfoToUi(void);
@@ -316,7 +318,10 @@ namespace Ignite
 
 		void clearSceneTimeBaseTick(void);
 		void renderTracksAndMix(AudioDataType* buffer);
-        void renderDesktopStereo(AudioDataType* planarBuffer);
+        void renderDesktopStereo(AudioDataType* planarBuffer,int frames = INTERNAL_AUDIO_20MS_BLOCK_SIZE);
+        bool desktopOffline = false;
+        bool desktopOfflineAudio = true;
+        std::function<void(const MidiMessage&,Track*)> desktopOfflineMidi;
         bool setDesktopVoiceLimit(int voices);
         int desktopVoiceLimit = 32;
 
