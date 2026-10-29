@@ -21,3 +21,8 @@ JUCE 7.0.12 retains its upstream licensing and the included multitouch patch.
 TinySoundFont (MIT) remains in the firmware/non-Windows path and legacy native
 tests. Its license is in `Source/Application/modules/Firmware/Application/Model/tsf.h`.
 Other bundled libraries retain the notices accompanying their sources.
+
+
+The original First Light demo MIDI (`assets/demo/First Light Demo.mid`) is CC0-1.0.
+It contains note/controller data only. SoundFont sample libraries remain external
+and retain their own licenses; rendered demo audio is not included in releases.

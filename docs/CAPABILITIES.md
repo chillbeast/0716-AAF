@@ -84,3 +84,10 @@ Type 0/1 PPQ MIDI imports as a new song, with assigned named parts, tempo/meter/
 Notes/events round to 48 ticks/quarter; scene boundaries round to sixteenths and crossing notes retrigger. Meters that exceed the global-bar model retain MIDI metadata with a normalised internal bar grid. SysEx, SMPTE and type 2 independent sequences are not imported. Resource and scene/library limits are validated before song creation. The 103-check setup/song/round-trip/reopen suite covers generated MIDI/SF2 fixtures and actual exported MIDI/audio; see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 Desktop.7 expands that suite to 131 checks, adding pedal-held note reconstruction, channel-mode release/termination, RPN/NRPN ordering and reset, overlapping clip notes and port/zero-tempo validation. Pedal-held notes are recreated until release in later scenes; envelopes and effect tails are not continuous. External-only MIDI export now includes logical ports without requiring program initialization, and the media suite totals 93 checks. Re-import earlier MIDI sources to apply the conversion changes. Hardware qualification and a working VST remain separate outstanding work. Desktop.8 implements SF2 modulators using FluidSynth.
+
+
+Desktop.9 includes the original First Light demo: five internal instruments,
+twenty assigned patterns and four scenes over sixteen bars at 112 BPM. Projects
+can create/save a copy without replacing existing songs. A compatible default GM
+SF2 is required; the supplied MIDI carries no samples. Missing fonts and pending
+edits are checked before the song is added.

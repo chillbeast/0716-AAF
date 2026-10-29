@@ -7248,10 +7248,10 @@ std::shared_ptr<void> SongManager::soundFontForInstrument(Instrument* instrument
     return acquireDesktopSoundFont(instrument->_instrumentData->soundFontPath,error);
 }
 
-std::vector<SongManager::SoundFontPreset> SongManager::getDesktopSoundFontPresets()
+std::vector<SongManager::SoundFontPreset> SongManager::getDesktopSoundFontPresets(bool defaultBank)
 {
     auto lock=engine.lockDesktopState();std::vector<SoundFontPreset> presets;
-    auto* font=static_cast<SF2::Bank*>((desktopBrowserFont?desktopBrowserFont:desktopDefaultFont).get());
+    auto* font=static_cast<SF2::Bank*>((!defaultBank && desktopBrowserFont?desktopBrowserFont:desktopDefaultFont).get());
     if(font)for(int index=0;index<SF2::count(font);++index)
         presets.push_back({SF2::bankNumber(font,index),SF2::programNumber(font,index),index,SF2::name(font,index)});
     return presets;

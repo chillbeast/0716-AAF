@@ -167,7 +167,7 @@ namespace IgniteDesktop::Media
             return result;
         }
 
-        std::string apply(IgniteEngine& engine) const
+        std::string apply(IgniteEngine& engine,const juce::String& namePrefix="MIDI-") const
         {
             auto lock=engine.lockDesktopState();auto& songs=*engine.songManager;
             if(songs.getSystemState()!=SYSTEM_STATE::IDLE)throw std::runtime_error("Stop playback and recording before importing a song.");
@@ -178,7 +178,7 @@ namespace IgniteDesktop::Media
             {const auto state=programAt(parts[p],sections[s].begin);assignments.emplace(int(p),state.first,state.second);}
             if(engine.instrumentManager->instrumentList.size()+assignments.size()>255)
                 throw std::runtime_error("This import exceeds the 255-instrument library limit.");
-            std::string songName=("MIDI-"+juce::File::createLegalFileName(name).substring(0,48)).toStdString();
+            std::string songName=(namePrefix+juce::File::createLegalFileName(name).substring(0,48)).toStdString();
             const auto base=songName;int suffix=2;
             while(std::any_of(songs.songInfoList.begin(),songs.songInfoList.end(),[&](const auto& item){return item.second==songName;}))
                 songName=base+" ("+std::to_string(suffix++)+")";

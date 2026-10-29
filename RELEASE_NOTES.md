@@ -1,3 +1,22 @@
+# IGNITE Desktop v0.3.3-desktop.9
+
+A ready-to-play demo song and a clearer route to hearing the sequencer.
+
+- **Projects > Create demo song** adds, selects and saves **Demo - First Light**,
+  preserving existing songs. Set a compatible General MIDI SF2 as default first,
+  close Settings after creating the demo, then press Space / PLAY.
+- Original 16-bar arrangement at 112 BPM: Intro, Groove, Lift and Outro scenes;
+  drums, finger bass, electric piano, marimba arpeggio and square lead; twenty
+  assigned patterns. Demo instruments use internal audio without external MIDI
+  output. The included CC0 MIDI contains no samples.
+- Unsaved edits and missing/incomplete default banks are checked before adding a
+  song. An unrelated bank in the browser does not replace the demo's default bank.
+- Source users can install a separate Documents demo project and Desktop shortcut
+  with `scripts/install-demo-windows.ps1`. Existing project directories are kept.
+- Updated manual and Projects screenshot. The new 86-check demo suite covers
+  live Windows output, full mix and all five stems, save/reopen and error cases.
+  No SoundFont samples or rendered sample-library audio are distributed.
+
 # IGNITE Desktop v0.3.3-desktop.8
 
 Full SF2 synthesis and a third, touchscreen-focused display mode.

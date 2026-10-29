@@ -161,3 +161,14 @@ screen, keyboard/mapped input and a small mode/settings toolbar. It scales witho
 clipping at odd window sizes, saves the selection, supports temporary CLI overrides
 and switches back to the existing layouts without reconstructing the session.
 The expanded five-launch layout suite contains 111 checks.
+
+
+## Desktop.9 demo and getting sound
+
+Adds the original First Light MIDI arrangement, Projects creation control and
+separate-project installer. The demo has fully assigned patterns, internal GM
+instruments and four scenes, with a compatible default bank checked before
+mutation. Existing songs and pending edits are protected. External MIDI output
+is unassigned for demo instruments. The 86-check suite covers audible live output,
+all five stems, full song duration, save/reopen and unavailable banks. Samples
+stay external; no rendered private-bank audio is published.

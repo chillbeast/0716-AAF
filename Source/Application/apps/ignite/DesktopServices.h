@@ -11,6 +11,7 @@
 #include "DesktopMediaJob.h"
 #include "DesktopMidiImport.h"
 #include "DesktopMidiSong.h"
+#include "DesktopDemo.h"
 
 namespace IgniteDesktop
 {
@@ -407,7 +408,19 @@ namespace IgniteDesktop
     public:
         explicit ProjectSettings(Ignite::IgniteEngine& e) : engine(e)
         {
-            for (auto* child : std::initializer_list<juce::Component*>{&description,&exportButton,&restoreButton,&status,&mediaDescription,&range,&stem,&wav,&midi,&import,&importSong,&cancel}) addAndMakeVisible(child);
+            for (auto* child : std::initializer_list<juce::Component*>{&demoDescription,&demo,&description,&exportButton,&restoreButton,&status,&mediaDescription,&range,&stem,&wav,&midi,&import,&importSong,&cancel}) addAndMakeVisible(child);
+            demoDescription.setText("First Light demo: set a GM SoundFont as default, create the song, then close Settings and press PLAY.",juce::dontSendNotification);
+            demoDescription.setMinimumHorizontalScale(1.0f);
+            demo.setComponentID("create-demo-song");
+            demo.onClick=[this]
+            {
+                try
+                {
+                    const auto name=Demo::create(engine);Demo::showSong();
+                    status.setText("Created and saved "+juce::String(name)+". Close Settings, then press Space / PLAY. Use Audio to select your speakers if needed.",juce::dontSendNotification);
+                }
+                catch(const std::exception& error){status.setText(juce::String(error.what()),juce::dontSendNotification);}
+            };
             description.setText("Export songs, patterns, instruments and settings as an Ignite backup ZIP. SoundFont files stay in your sample library. Restoring a backup requires restarting Ignite.",juce::dontSendNotification);
             exportButton.onClick=[this] { choose(false); }; restoreButton.onClick=[this] { choose(true); };
             mediaDescription.setText("Export the current song or scene once, with current mute/solo settings. WAV uses internal sounds; MIDI includes external parts. Import clips into the library or open MIDI as a new arranged song. Save current edits before importing a song.",juce::dontSendNotification);
@@ -419,8 +432,9 @@ namespace IgniteDesktop
         ~ProjectSettings() override {stopTimer();}
         void resized() override
         {
-            description.setBounds(16,16,getWidth()-32,90);exportButton.setBounds(16,112,210,34);restoreButton.setBounds(240,112,210,34);
-            mediaDescription.setBounds(16,178,getWidth()-32,70);range.setBounds(16,260,220,30);stem.setBounds(250,260,getWidth()-266,30);
+            demoDescription.setBounds(16,10,getWidth()-32,44);demo.setBounds(16,60,210,32);
+            description.setBounds(16,104,getWidth()-32,50);exportButton.setBounds(16,160,210,32);restoreButton.setBounds(240,160,210,32);
+            mediaDescription.setBounds(16,208,getWidth()-32,62);range.setBounds(16,276,220,30);stem.setBounds(250,276,getWidth()-266,30);
             wav.setBounds(16,310,180,34);midi.setBounds(208,310,180,34);import.setBounds(400,310,180,34);cancel.setBounds(16,362,180,32);importSong.setBounds(208,362,180,32);status.setBounds(16,414,getWidth()-32,getHeight()-430);
         }
     private:
@@ -430,7 +444,7 @@ namespace IgniteDesktop
         }
         void busy(bool running)
         {
-            for(auto* button:{&wav,&midi,&import,&importSong,&exportButton,&restoreButton})button->setEnabled(!running);
+            for(auto* button:{&demo,&wav,&midi,&import,&importSong,&exportButton,&restoreButton})button->setEnabled(!running);
             range.setEnabled(!running);stem.setEnabled(!running);cancel.setEnabled(running);
             if(running)startTimer(200);else stopTimer();
         }
@@ -534,11 +548,11 @@ namespace IgniteDesktop
             });
         }
         Ignite::IgniteEngine& engine;
-        juce::Label description,status,mediaDescription;
+        juce::Label demoDescription,description,status,mediaDescription;
         juce::ComboBox range,stem;
         Media::Job job;
         juce::TextButton wav{"Export WAV..."},midi{"Export MIDI..."},import{"Import MIDI clips..."},importSong{"Import MIDI song..."},cancel{"Cancel export"};
-        juce::TextButton exportButton{"Export backup..."},restoreButton{"Restore backup..."};
+        juce::TextButton demo{"Create demo song"},exportButton{"Export backup..."},restoreButton{"Restore backup..."};
         std::unique_ptr<juce::FileChooser> chooser;
     };
 

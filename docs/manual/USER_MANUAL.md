@@ -1,10 +1,10 @@
 ﻿# IGNITE Desktop Simulator
 
-**User manual · Community release v0.3.3-desktop.8 · 29 October 2026**
+**User manual · Community release v0.3.3-desktop.9 · 29 October 2026**
 
 IGNITE is a MIDI sequencer with an internal SoundFont synthesizer. This Windows edition combines the released firmware application with Hardware, Compact and Touchscreen layouts, plus desktop audio, MIDI, SoundFont and backup controls. All modes run the actual firmware touchscreen.
 
-This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.8` identifies this community release.
+This is an independent community build of Music Tribe's open-source release. It is not an official Behringer manual or a flashable device image. The firmware application reports version 0.3.3; `desktop.9` identifies this community release.
 
 ![IGNITE simulator compact layout with a large live touchscreen](../images/ignite-compact.png)
 
@@ -27,7 +27,7 @@ This is an independent community build of Music Tribe's open-source release. It 
 
 ## 1. Install and launch
 
-Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.8). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
+Download the Windows x64 ZIP from the [GitHub release](https://github.com/chillbeast/0716-AAF/releases/tag/v0.3.3-desktop.9). Extract the complete folder, then run **Ignite.exe**. Keep its **assets** directory beside the executable. Launch from the extracted folder rather than opening the executable inside the ZIP.
 
 The package is portable and does not require an installer, Visual Studio or a Python installation to run. Development tools are needed only to rebuild it. A working Windows audio output is required to hear internal sound. Supply your own `.sf2` SoundFont; sample banks are not included.
 
@@ -97,6 +97,21 @@ The source supports up to **64 tracks**, **16 step positions per bar**, **16 bar
 Patterns and instruments can be reused. Editing a reused library object may affect more than one assignment. Copy it before making a variation that should remain independent. Save after the change.
 
 ## 4. Make your first sequence
+
+### Play the included First Light demo
+
+1. Open **Desktop Settings > SoundFonts** and browse a General MIDI SF2. Choose **Set as default SF2**. **Preview C4** should make sound before you continue.
+2. If preview is silent, select your speakers/headphones in **Audio** and save the audio settings. Check Windows volume and the selected output device.
+3. Stop playback and save any current edits. Open **Projects > Create demo song**. Ignite adds, selects and saves **Demo - First Light** with all its patterns and instruments assigned.
+4. Close Desktop Settings and press **Space / PLAY**. Press **Esc / STOP** to stop.
+
+The original demo is 16 bars at 112 BPM in A minor. Its four scenes are Intro, Groove, Lift and Outro, with five tracks: drums, finger bass, electric piano, marimba arpeggio and square lead. Explore the assigned patterns in Pattern view, mute individual tracks and edit copies to make variations. Existing songs are retained. Creating another demo adds a separately named copy. The demo uses internal sounds and does not need a MIDI controller or an external MIDI output.
+
+The GM bank must contain bank 0 programs 4, 12, 33 and 80, plus bank 128 program 0 for drums (numbers are zero based). SF2 samples remain external. The bundled original `assets/demo/First Light Demo.mid` contains only notes/controllers and is CC0; it can also be opened in another DAW. A missing/incomplete bank produces setup instructions before any demo song is added.
+
+For source builds, `scripts/install-demo-windows.ps1 -SoundFont 'D:/path/bank.sf2'` creates a separate saved demo project and an **IGNITE Demo** desktop shortcut. The project defaults to Documents/IGNITE Demo; the normal simulator shortcut keeps its original libraries. Open the demo shortcut and press Space / PLAY.
+
+### Build your own sequence
 
 This walkthrough uses internal audio and does not require a MIDI controller. The underlying create/edit/save/play workflow is covered by model tests; the test harness does not click every control in these screens.
 
@@ -359,7 +374,7 @@ See [Windows build instructions](../BUILD_WINDOWS.md) for Visual Studio, CMake, 
 .\scripts\workflow-windows.ps1 -Configuration Release -NodeEdit -AudioDevice -SimulateInterruptedSave
 ```
 
-Tests use disposable directories under the ignored build tree. Verification covers **84 native Release/ASan checks**, **85 native Debug checks**, **31 full-SF2 compatibility checks in each build**, **107 arrangement workflow checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **111 layout checks**, **99 stereo/effects/multi-bank checks**, **93 media setup/export/import/reopen checks**, **131 MIDI song setup/import/round-trip/reopen checks**, **91 no-font workflow checks under ASan**, and **seven smoke checks per font/no-font case**. The unchanged packet protocol previously passed five checks. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
+Tests use disposable directories under the ignored build tree. Verification covers **84 native Release/ASan checks**, **85 native Debug checks**, **31 full-SF2 compatibility checks in each build**, **107 arrangement workflow checks**, **86 demo setup/playback/export/reopen checks**, **75 desktop feature/setup/reopen checks**, **107 MIDI/save/editor correctness checks**, **111 layout checks**, **99 stereo/effects/multi-bank checks**, **93 media setup/export/import/reopen checks**, **131 MIDI song setup/import/round-trip/reopen checks**, **91 no-font workflow checks under ASan**, and **seven smoke checks per font/no-font case**. The unchanged packet protocol previously passed five checks. These counts describe overlapping suites, not a count of every supported feature. Final sanitizer runs reported no address errors.
 
 The separate AudIO, DAW and Airwindows libraries also build, but the Windows app uses embedded FluidSynth 2.6.1; non-Windows firmware retains TinySoundFont. See [third-party notices](../THIRD_PARTY_NOTICES.md) for the included LGPL license, corresponding engine source and rebuild/relink instructions. Detailed evidence and remaining audit items are in [AUDIT_FIXES.md](../AUDIT_FIXES.md), [CAPABILITIES.md](../CAPABILITIES.md) and [DEVELOPMENT.md](../DEVELOPMENT.md).
 

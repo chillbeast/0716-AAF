@@ -559,7 +559,7 @@ namespace Ignite
 		juce::AudioDeviceManager *dm = nullptr;
 		void* get_tsf_instance();
 		struct SoundFontPreset { int bank, program, index; std::string name; };
-		std::vector<SoundFontPreset> getDesktopSoundFontPresets();
+		std::vector<SoundFontPreset> getDesktopSoundFontPresets(bool defaultBank=false);
 		bool loadDesktopSoundFont(const std::string& path, std::string& error);
         bool browseDesktopSoundFont(const std::string& path,std::string& error);
         std::shared_ptr<void> acquireDesktopSoundFont(const std::string& path,std::string& error);

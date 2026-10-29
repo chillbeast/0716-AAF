@@ -74,7 +74,7 @@ Debug uses the same build tree with `--config Debug`. The inherited UI retains m
 
 The manual source is `docs/manual/USER_MANUAL.md`. To regenerate its self-contained HTML and PDF, install Python-Markdown (`python -m pip install Markdown`), then run `python scripts/build-manual.py --pdf`. PDF rendering uses an installed Edge/Chrome browser in headless mode with a separate temporary profile; `--browser` selects another Chromium executable. These tools are only needed for documentation development.
 
-After committing the release source, create the versioned Windows package with `scripts/package-windows.ps1 -Version v0.3.3-desktop.8`. It includes the tested Release executable, assets, manual, license, release notes and corresponding source. `BUILD.json` records the source commit, embedded FluidSynth version/commit, whether the checkout is dirty and the executable SHA-256. The ZIP builder checks its entries and CRCs and refuses included SF2 files.
+After committing the release source, create the versioned Windows package with `scripts/package-windows.ps1 -Version v0.3.3-desktop.9`. It includes the tested Release executable, assets, manual, license, release notes and corresponding source. `BUILD.json` records the source commit, embedded FluidSynth version/commit, whether the checkout is dirty and the executable SHA-256. The ZIP builder checks its entries and CRCs and refuses included SF2 files.
 
 ## Device build boundary
 
@@ -106,3 +106,16 @@ linked-stereo banks to CTest; sample banks are excluded from distribution.
 The standalone `IgniteSoundFontProbe` uses the same desktop backend and writes
 stereo 48 kHz PCM16 WAV. `--touchscreen` and launcher `-Layout Touchscreen` select
 the remembered third toolbar mode temporarily, without altering saved preferences.
+
+
+## Demo project
+
+The assets include the original CC0 `demo/First Light Demo.mid`. In the app,
+select a GM default SF2, then Projects > Create demo song. Existing work must be
+saved and playback stopped. The demo is added and saved without replacing songs.
+For a separate Documents project and Desktop shortcut, run
+`scripts/install-demo-windows.ps1 -SoundFont 'D:/path/to/GM-bank.sf2'`.
+The installer refuses an existing destination directory. Samples stay external.
+Run `scripts/demo-windows.ps1` for live output, full mix/five stems, persistence,
+pending-edit protection and missing/incomplete font checks. Add `-SoundFont`
+to exercise an actual GM bank; normal tests generate their own original fixture.

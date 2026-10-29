@@ -263,3 +263,41 @@ The private CT4MGM bank loads 329 presets (128/128 GM programs and 10 drum sets)
 and renders five representative programs through the same backend. No private
 banks are distributed. The manual is 24 pages. Counts include repeated setup;
 physical MIDI/CV/clock and VST integration remain outside this verification.
+
+
+## Desktop.9 First Light demo
+
+`assets/demo/First Light Demo.mid` is an original CC0 16-bar arrangement at
+112 BPM: four four-bar scenes (Intro, Groove, Lift, Outro) and five parts
+(drums, finger bass, electric piano, marimba arp, square lead). The reproducible
+source is `scripts/make-demo-midi.py`; it requires only the Python standard library.
+
+Projects > Create demo song validates the default bank's required GM presets,
+then uses the existing validated MIDI import plan to add/select/save a song.
+Existing songs are retained. Unsaved work and active transport keep the import
+blocked. An optional name prefix keeps normal MIDI import naming unchanged.
+Demo output instruments use internal synthesis and port -1. Bank browsing is
+independent: the default-bank preset query explicitly ignores the browsed bank.
+
+`--install-demo` creates/saves the demo and exits for the source installer.
+`scripts/install-demo-windows.ps1` installs a separate Documents/IGNITE Demo
+project and Desktop shortcut, refusing an existing destination. It records an
+external SF2 path, with no sample copy. The ordinary simulator libraries stay
+separate. Project creation in the UI remains additive in its active library.
+
+The new demo suite totals 86 checks: 50 existing setup, 28 demo/audio checks,
+six fresh-process checks and two unavailable-bank checks. It verifies save/idle
+protection, independent browser/default banks, internal assignments, 16 bars,
+20 patterns, live Windows audio, all five rendered stems, full mix duration and
+persistence. Release with the private CT4MGM bank passes at
+`demo/20261029-124353`; ASan with original generated banks passes at
+`demo/20261029-124222`. The real-bank mix peaks at 0.2452 with RMS 0.0293;
+its 36.2857 seconds include the existing two-second export tail. A local PCM16
+preview is saved only in the separate Documents demo project, never distributed.
+
+Final UI feature checks pass at Release `features/20261029-124937` and ASan
+`features/20261029-124906` (75 each). MIDI song regressions pass at Release
+`midi-song/20261029-124444` (131); ASan passes at `midi-song/20261029-124946` (131). Final prefixes
+`asan_demo9` and `asan_demo9_final` produce no address-error reports.
+Release/Debug/ASan apps build. The latest Projects screenshot and manual explain
+loading a default bank, previewing a sound, creating the demo and pressing Play.

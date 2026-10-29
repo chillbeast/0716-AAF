@@ -42,6 +42,7 @@ extern IDevice* EngineInit(void);
 #include "DesktopMediaRender.h"
 #include "DesktopMediaTest.h"
 #include "DesktopMidiSongTest.h"
+#include "DesktopDemoTest.h"
 
 //==============================================================================
 #define SHOW_BOOT_IMAGE
@@ -209,6 +210,27 @@ public:
                 Timer::callAfterDelay(800,[this] {captureSettingsTabs(0);});
             });
         if (commandLine.contains("--desktop-settings")) Timer::callAfterDelay(1000,[this] {openDesktopSettings();});
+        if(commandLine.contains("--install-demo"))Timer::callAfterDelay(2500,[this]
+        {
+            try
+            {
+                auto& engine=*static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+                const auto name=IgniteDesktop::Demo::create(engine);
+                Logger::writeToLog("Demo installed: "+juce::String(name));setApplicationReturnValue(0);
+            }
+            catch(const std::exception& error){Logger::writeToLog("Demo install failed: "+juce::String(error.what()));setApplicationReturnValue(1);}
+            quit();
+        });
+        if(commandLine.contains("--demo-test") || commandLine.contains("--demo-verify") || commandLine.contains("--demo-unavailable"))
+            Timer::callAfterDelay(2500,[this,commandLine]
+            {
+                auto& engine=*static_cast<IgniteEngine*>(_PUiVirtualEngine.get());
+                const bool verify=commandLine.contains("--demo-verify"),unavailable=commandLine.contains("--demo-unavailable");
+                const int failures=verify||unavailable?0:DesktopWorkflowTest::run(engine,false,true,false);
+                if(failures){setApplicationReturnValue(1);quit();return;}
+                demoTest=std::make_unique<DesktopDemoTest>(engine,[this](int failed){setApplicationReturnValue(failed?1:0);quit();});
+                demoTest->start(verify,unavailable);
+            });
         if(commandLine.contains("--correctness-test") || commandLine.contains("--correctness-verify"))
             Timer::callAfterDelay(2500,[this,commandLine]
             {
@@ -260,6 +282,7 @@ public:
 
 	void shutdown() override
 	{
+        demoTest.reset();
         midiSongTest.reset();
         mediaTest.reset();
         closeGuard.reset();
@@ -470,6 +493,7 @@ private:
     std::unique_ptr<DesktopCloseGuard> closeGuard;
     std::unique_ptr<DesktopMediaTest> mediaTest;
     std::unique_ptr<DesktopMidiSongTest> midiSongTest;
+    std::unique_ptr<DesktopDemoTest> demoTest;
     juce::Component::SafePointer<juce::DialogWindow> desktopSettings;
 	std::unique_ptr<MainWindow> mainWindow;
 	std::unique_ptr<FileLogger> fileLogger;

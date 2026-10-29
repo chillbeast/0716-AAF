@@ -12,6 +12,8 @@ Extract the Windows package and run `Ignite.exe`, then choose your own SF2 in **
 
 The Windows simulator starts with a large touchscreen in **Compact** layout; the toolbar switches to the vector **Hardware** faceplate and remembers your choice. The third **Touchscreen** mode hides every hardware control and expands the live display while keeping the mode/settings toolbar, keyboard and mapped inputs available. All modes preserve the same session. It includes audio/device settings, MIDI routing, stereo synthesis with saved track effects, configurable polyphony, per-instrument SF2 SoundFonts with FluidSynth modulation, preset effects and 24-bit sample support, step/live recording, WAV/stem and MIDI export, MIDI song/clip import with tempo and meter changes, and project backup ZIP export/restore. Open **Desktop Settings → Projects** for file interchange. See [desktop features](docs/DESKTOP_FEATURES.md). Build and verify with `scripts/build-windows.ps1 -DebugBuild -Package`.
 
+For a ready-to-play arrangement, choose a General MIDI SF2 as default, then open **Desktop Settings > Projects > Create demo song**. The original **First Light** demo has five parts and four scenes. Close Settings and press **Space / PLAY**. No MIDI controller is needed.
+
 ![IGNITE compact simulator layout](docs/images/ignite-compact.png)
 
 ![IGNITE desktop simulator](docs/images/ignite-simulator.png)
